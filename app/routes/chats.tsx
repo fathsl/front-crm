@@ -7,16 +7,6 @@ import type { Discussion } from "~/help";
 import type { Message } from "~/help";
 import { userAtom } from "~/utils/userAtom";
 
-interface FileAttachment {
-    id?: number;
-    fileName: string;
-    originalFileName: string;
-    fileSize?: number;
-    mimeType?: string;
-    filePath?: string;
-    uploadedAt?: string;
-  }
-
 const ChatApplication: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
@@ -35,7 +25,6 @@ const ChatApplication: React.FC = () => {
   const [newDiscussionTitle, setNewDiscussionTitle] = useState('');
   const [newDiscussionDescription, setNewDiscussionDescription] = useState('');
   const [currentView, setCurrentView] = useState('users');
-  const [files, setFiles] = useState<FileAttachment[]>([]);
   const [error, setError] = useState('');
 
   const baseUrl = "http://localhost:5178";
