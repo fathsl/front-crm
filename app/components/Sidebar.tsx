@@ -1,4 +1,4 @@
-import { BarChart3, Box, Calculator, CheckSquare2Icon, ClipboardList, Factory, FilePlus, History, LogOut, Mail, MessageSquare, Package, Percent, Settings, ShoppingBag, Truck, UserPlus, UsersIcon, UserSquare2Icon, UsersRoundIcon, X } from 'lucide-react';
+import { BarChart3, Box, Calculator, CheckSquare2Icon, ClipboardList, Factory, FilePlus, History, LogOut, Mail, MessageCircle, MessageSquare, Package, Percent, Settings, ShoppingBag, Truck, UserPlus, UsersIcon, UserSquare2Icon, UsersRoundIcon, X } from 'lucide-react';
 import { type FC } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useLocation } from 'react-router';
@@ -40,6 +40,7 @@ const Sidebar: FC<SidebarProps> = ({
     { id: 'prescriptions', label: 'Prescriptions', icon: ClipboardList, category: 'Tools', href: '/prescriptions' },
     { id: 'users', label: 'Users', icon: UsersIcon, category: 'Tools', href: '/users' },
     { id: 'meetings', label: 'Meetings', icon: MessageSquare, category: 'Communication', href: '/meetings' },
+    { id: 'chats', label: 'Chats', icon: MessageCircle, category: 'Communication', href: '/chats' },
     { id: 'bulk-mail', label: 'Bulk Mail', icon: Mail, category: 'Communication', href: '/mail' },
   ];
 

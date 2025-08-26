@@ -197,18 +197,37 @@ export interface FilterOptions {
     orders: FilteredOrderDto[];
   }
 
+export interface Document {
+    id: number;
+    fileName: string;
+    originalFileName: string;
+    fileSize?: number;
+    mimeType?: string;
+    filePath?: string;
+    uploadedAt?: Date;
+}
+
 export interface Message {
-    id: string;
+    id: number;
     senderId: number;
     text?: string;
     audioUrl?: string;
-    messageType: 'text' | 'voice';
+    messageType: MessageType;
     timestamp: any;
     duration?: number;
-  }
+    senderName?: string;
+    isEdited?: boolean;
+    createdAt?: Date;
+    updatedAt?: Date;
+    senderUsername?: string;
+    content?: string;
+    documentId?: number;
+    document?: Document;
+    fileReference?: string;
+}
 
 export interface Chat {
-    id: string;
+    id: number;
     participants: number[];
     lastMessage: string;
     lastMessageAt: Date;
@@ -229,4 +248,43 @@ export interface Client {
     updatedAt: Date;
     createdBy : number;
     updatedBy : number;
+}
+
+export interface CreateDiscussionRequest {
+    title: string;
+    description: string;
+    createdByUserId: number;
+    participantUserIds: number[];
+}
+
+export enum MessageType {
+    Text,
+    Voice,
+    File
+}
+
+export interface SendMessageRequest {
+    discussionId: number;
+    senderId: number;
+    receiverId: number;
+    content: string;
+    messageType: MessageType;
+}
+
+export interface CreateMessageRequest {
+    discussionId: number;
+    senderId: number;
+    receiverId: number;
+    content: string;
+    messageType: MessageType;
+}
+
+export interface Discussion {
+    id: number;
+    title: string;
+    description: string;
+    createdByUserId: number;
+    participantUserIds: number[];
+    createdAt : Date;
+    updatedAt : Date;
 }
