@@ -1,7 +1,7 @@
 import { useAtomValue } from "jotai";
-import { ArrowLeft, Check, Edit3, FileIcon, MessageSquare, Mic, Paperclip, Pause, Play, Plus, PlusIcon, Send, Square, Trash2, Users, Volume2, X } from "lucide-react";
+import { AlertCircle, ArrowLeft, Check, CheckCircle, Clock, Edit3, FileIcon, FileText, MessageSquare, Mic, Paperclip, Pause, Play, Plus, PlusIcon, Send, Square, Trash2, Users, Volume2, X, XCircle } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { formatFileSize, MessageType, TaskPriority, type SendMessageRequest, type User } from "~/help";
+import { formatFileSize, MessageType, TaskPriority, TaskStatus, type SendMessageRequest, type User } from "~/help";
 import type { CreateDiscussionRequest } from "~/help";
 import type { Discussion } from "~/help";
 import type { Message } from "~/help";
@@ -31,9 +31,11 @@ const ChatApplication: React.FC = () => {
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
   const [playingVoiceId, setPlayingVoiceId] = useState<number | null>(null);
   const [error, setError] = useState('');
-
-  const [showTaskDropdown, setShowTaskDropdown] = useState(false);
-  const [showCreateTask, setShowCreateTask] = useState(false);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerType, setDrawerType] = useState<MessageType | null>(null);
+  const [taskContent, setTaskContent] = useState('');
+  const [taskStatus, setTaskStatus] = useState(TaskStatus.Backlog);
   const [taskData, setTaskData] = useState({
     title: '',
     description: '',
@@ -132,10 +134,11 @@ const ChatApplication: React.FC = () => {
     }
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      const file = e.target.files[0];
-      handleFileUpload(file);
+  const handleFileChange = (e : React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setSelectedFile(file);
+      setTaskContent(`File: ${file.name}`);
     }
   };
 
@@ -150,7 +153,7 @@ const ChatApplication: React.FC = () => {
     formData.append('senderId', currentUser.userId.toString());
     formData.append('receiverId', (selectedUser?.userId || 0).toString());
     formData.append('content', `File: ${file.name}`);
-    formData.append('messageType', MessageType.File.toString());
+    formData.append('messageType', MessageType.Voice.toString());
     formData.append('file', file);
  
     try {
@@ -501,9 +504,19 @@ const ChatApplication: React.FC = () => {
     }
   };
 
-  const handleCreateDiscussion = () => {
-    setShowCreateDiscussion(true);
-  };
+  const statusOptions = [
+    { value: TaskStatus.Backlog, label: 'Backlog', icon: Clock, color: 'text-yellow-600 bg-yellow-100' },
+    { value: TaskStatus.Todo, label: 'Todo', icon: AlertCircle, color: 'text-blue-600 bg-blue-100' },
+    { value: TaskStatus.InProgress, label: 'In Progress', icon: CheckCircle, color: 'text-green-600 bg-green-100' },
+    { value: TaskStatus.InReview, label: 'In Review', icon: AlertCircle, color: 'text-violet-600 bg-violet-100' },
+    { value: TaskStatus.Done, label: 'Done', icon: XCircle, color: 'text-red-600 bg-red-100' }
+  ];
+
+  const dropdownOptions = [
+    { type: MessageType.Text, icon: MessageSquare, label: 'Text Task', color: 'text-blue-600 hover:bg-blue-50' },
+    { type: MessageType.File, icon: FileText, label: 'File Task', color: 'text-green-600 hover:bg-green-50' },
+    { type: MessageType.Voice, icon: Mic, label: 'Voice Task', color: 'text-purple-600 hover:bg-purple-50' }
+  ];
 
   useEffect(() => {
     if (!selectedDiscussion) return;
@@ -514,6 +527,17 @@ const ChatApplication: React.FC = () => {
 
     return () => clearInterval(interval);
   }, [selectedDiscussion, fetchMessages]);
+
+  useEffect(() => {
+    return () => {
+      if (recordingIntervalRef.current) {
+        clearInterval(recordingIntervalRef.current);
+      }
+      if (audioStreamRef.current) {
+        audioStreamRef.current.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, []);
 
   const goBack = () => {
     if (currentView === 'chat') {
@@ -529,10 +553,134 @@ const ChatApplication: React.FC = () => {
     return new Date(dateString).toLocaleString('tr-TR');
   };
 
-  const formatTime = (seconds: number) => {
-    const min = Math.floor(seconds / 60);
-    const sec = seconds % 60;
-    return `${min}:${sec < 10 ? '0' : ''}${sec}`;
+  const formatTime = (seconds : number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const handleDropdownSelect = (type : MessageType) => {
+    setDrawerType(type);
+    setDrawerOpen(true);
+    setShowDropdown(false);
+    setTaskContent('');
+    setSelectedFile(null);
+    setAudioBlob(null);
+    setTaskStatus(TaskStatus.Backlog);
+  };
+
+  const handleSendTask = async () => {
+    if (!taskContent.trim() && !selectedFile && !audioBlob) return;
+
+    const taskMessageData = {
+      discussionId: selectedDiscussion?.id,
+      senderId: currentUser?.userId,
+      receiverId: selectedUser?.userId || null,
+      content: taskContent,
+      messageType: MessageType.Task,
+      taskTitle: taskContent,
+      taskDescription: null,
+      taskStatus: taskStatus,
+      taskPriority: 'Medium',
+      dueDate: null,
+      estimatedTime: null,
+      assignedUserIds: selectedUser ? [selectedUser.userId] : []
+    };
+
+    try {
+      let response;
+
+      if (drawerType === MessageType.File && selectedFile) {
+        const formData = new FormData();
+        Object.keys(taskMessageData).forEach(key => {
+          const typedKey = key as keyof typeof taskMessageData;
+          const value = taskMessageData[typedKey];
+          
+          if (value !== null && value !== undefined) {
+            if (Array.isArray(value)) {
+              value.forEach((item, index) => {
+                formData.append(`${key}[${index}]`, item.toString());
+              });
+            } else {
+              formData.append(key, value.toString());
+            }
+          }
+        });
+        formData.append('file', selectedFile);
+
+        response = await fetch('/api/Chat/messages/send-task-with-file', {
+          method: 'POST',
+          body: formData
+        });
+      } else if (drawerType === MessageType.Voice && audioBlob) {
+        const formData = new FormData();
+        Object.keys(taskMessageData).forEach(key => {
+          const typedKey = key as keyof typeof taskMessageData;
+          const value = taskMessageData[typedKey];
+          
+          if (value !== null && value !== undefined) {
+            if (Array.isArray(value)) {
+              value.forEach((item, index) => {
+                formData.append(`${key}[${index}]`, item.toString());
+              });
+            } else {
+              formData.append(key, value.toString());
+            }
+          }
+        });
+        formData.append('duration', recordingTime.toString());
+        formData.append('audioFile', audioBlob, 'voice-message.webm');
+
+        response = await fetch('/api/Chat/messages/send-task-with-voice', {
+          method: 'POST',
+          body: formData
+        });
+      } else {
+        response = await fetch('/api/Chat/messages/send-with-task', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(taskMessageData)
+        });
+      }
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log('Task message sent:', result);
+        setDrawerOpen(false);
+        setDrawerType(null);
+        setTaskContent('');
+        setSelectedFile(null);
+        setAudioBlob(null);
+        setRecordingTime(0);
+        setTaskStatus(TaskStatus.Backlog);
+        
+        alert('Task message sent successfully!');
+      } else {
+        throw new Error('Failed to send task message');
+      }
+    } catch (error) {
+      console.error('Error sending task message:', error);
+      alert('Failed to send task message');
+    }
+  };
+
+  const closeDrawer = () => {
+    if (isRecording) {
+      cancelRecording();
+    }
+    setDrawerOpen(false);
+    setDrawerType(null);
+    setTaskContent('');
+    setSelectedFile(null);
+    setAudioBlob(null);
+    setRecordingTime(0);
+    setTaskStatus(TaskStatus.Backlog);
+  };
+
+  const getStatusOption = (status : string) => {
+    return statusOptions.find(option => option.value === status) || statusOptions[0];
   };
 
   return (
@@ -808,6 +956,28 @@ const ChatApplication: React.FC = () => {
             >
               {isRecording ? <Square size={20} /> : <Mic size={20} />}
             </button>
+
+            <button
+              onClick={() => setShowDropdown(!showDropdown)}
+              className="p-3 text-slate-500 hover:text-slate-700 rounded-full hover:bg-slate-100 transition"
+            >
+              <Plus size={20} />
+            </button>
+
+            {showDropdown && (
+              <div className="absolute bottom-full mb-2 left-0 bg-white rounded-xl shadow-lg border border-slate-200 py-2 min-w-[160px] z-50">
+                {dropdownOptions.map((option) => (
+                  <button
+                    key={option.type}
+                    onClick={() => handleDropdownSelect(option.type)}
+                    className={`w-full flex items-center px-4 py-3 text-sm transition ${option.color}`}
+                  >
+                    <option.icon size={16} className="mr-3" />
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            )}
             
             <div className="flex-1 relative">
               {isRecording && (
@@ -977,6 +1147,194 @@ const ChatApplication: React.FC = () => {
           </div>
         </div>
       )}
+
+      {drawerOpen && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
+          <div className="w-full bg-white rounded-t-xl max-h-[80vh] overflow-hidden">
+            <div className="flex items-center justify-between p-4 border-b border-slate-200">
+              <div className="flex items-center space-x-3">
+                {drawerType === MessageType.Text && <MessageSquare size={20} className="text-blue-600" />}
+                {drawerType === MessageType.File && <FileText size={20} className="text-green-600" />}
+                {drawerType === MessageType.Voice && <Mic size={20} className="text-purple-600" />}
+                <h3 className="font-semibold text-lg">
+                  Create {drawerType === MessageType.Text ? 'Text' : drawerType === MessageType.File ? 'File' : 'Voice'} Task
+                </h3>
+              </div>
+              <button
+                onClick={closeDrawer}
+                className="p-2 text-slate-500 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="p-4 space-y-4 max-h-[60vh] overflow-y-auto">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Task Status
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {statusOptions.map((option) => {
+                    const IconComponent = option.icon;
+                    return (
+                      <button
+                        key={option.value}
+                        onClick={() => setTaskStatus(option.value)}
+                        className={`flex items-center p-3 rounded-lg border-2 transition ${
+                          taskStatus === option.value
+                            ? 'border-blue-500 bg-blue-50'
+                            : 'border-slate-200 hover:border-slate-300'
+                        }`}
+                      >
+                        <div className={`p-1 rounded ${option.color} mr-3`}>
+                          <IconComponent size={16} />
+                        </div>
+                        <span className="text-sm font-medium">{option.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="bg-slate-50 rounded-lg p-3">
+                <div className="text-sm text-slate-600">Assigned to:</div>
+                <div className="font-medium text-slate-900">
+                  {selectedUser?.firstName + ' ' + selectedUser?.lastName || 'No assignee selected'}
+                </div>
+              </div>
+
+              {drawerType === MessageType.Text && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    Task Content
+                  </label>
+                  <textarea
+                    value={taskContent}
+                    onChange={(e) => setTaskContent(e.target.value)}
+                    placeholder="Describe the task..."
+                    className="w-full px-4 py-3 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                    rows={4}
+                  />
+                </div>
+              )}
+
+              {drawerType === MessageType.File && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    Upload File
+                  </label>
+                  <div
+                    onClick={() => fileInputRef.current?.click()}
+                    className="border-2 border-dashed border-slate-300 rounded-lg p-6 text-center cursor-pointer hover:border-slate-400 transition"
+                  >
+                    {selectedFile ? (
+                      <div className="flex items-center justify-center space-x-2">
+                        <FileText size={20} className="text-green-600" />
+                        <span className="font-medium">{selectedFile.name}</span>
+                      </div>
+                    ) : (
+                      <div>
+                        <Paperclip size={24} className="mx-auto text-slate-400 mb-2" />
+                        <p className="text-slate-600">Click to select file</p>
+                      </div>
+                    )}
+                  </div>
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleFileChange}
+                    className="hidden"
+                  />
+                </div>
+              )}
+
+              {drawerType === MessageType.Voice && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    Voice Recording
+                  </label>
+                  <div className="space-y-4">
+                    {!audioBlob ? (
+                      <div className="text-center">
+                        {isRecording ? (
+                          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                            <div className="flex items-center justify-center space-x-3 mb-3">
+                              <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
+                              <span className="text-red-600 font-medium">
+                                Recording: {formatTime(recordingTime)}
+                              </span>
+                            </div>
+                            <div className="flex justify-center space-x-2">
+                              <button
+                                onClick={stopRecording}
+                                className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition flex items-center space-x-2"
+                              >
+                                <Square size={16} />
+                                <span>Stop</span>
+                              </button>
+                              <button
+                                onClick={cancelRecording}
+                                className="px-4 py-2 bg-slate-500 text-white rounded-lg hover:bg-slate-600 transition"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={startRecording}
+                            className="px-6 py-3 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition flex items-center space-x-2 mx-auto"
+                          >
+                            <Mic size={20} />
+                            <span>Start Recording</span>
+                          </button>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                        <div className="flex items-center justify-center space-x-3">
+                          <Volume2 size={20} className="text-green-600" />
+                          <span className="font-medium">Recording ready: {formatTime(recordingTime)}</span>
+                          <button
+                            onClick={() => {
+                              setAudioBlob(null);
+                              setRecordingTime(0);
+                              setTaskContent('');
+                            }}
+                            className="text-red-500 hover:text-red-700"
+                          >
+                            <X size={16} />
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="border-t border-slate-200 p-4">
+              <div className="flex justify-between">
+                <button
+                  onClick={closeDrawer}
+                  className="px-6 py-3 text-slate-600 hover:text-slate-800 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSendTask}
+                  disabled={!taskContent.trim() && !selectedFile && !audioBlob}
+                  className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center space-x-2"
+                >
+                  <Send size={16} />
+                  <span>Send Task</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };

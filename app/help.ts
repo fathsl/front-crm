@@ -74,7 +74,7 @@ export interface Task {
 }
 
 export enum Status {
-    Backlog,
+    Pending,
     ToDo,
     InProgress,
     InReview,
