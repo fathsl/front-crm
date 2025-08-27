@@ -42,6 +42,21 @@ export enum ProjectStatus {
     Completed
 }
 
+export const TaskStatus = {
+  Backlog: 'Backlog',
+  Todo: 'Todo',
+  InProgress: 'InProgress',
+  InReview: 'InReview',
+  Done: 'Done'
+};
+
+export const TaskPriority = {
+  Low: 'Low',
+  Medium: 'Medium',
+  High: 'High',
+  Urgent: 'Urgent'
+};
+
 export interface Task {
     id : number;
     title: string;
@@ -209,6 +224,7 @@ export interface Document {
 
 export interface Message {
     id: number;
+    discussionId?: number;
     senderId: number;
     text?: string;
     audioUrl?: string;
@@ -224,6 +240,19 @@ export interface Message {
     documentId?: number;
     document?: Document;
     fileReference?: string;
+    hasFile?: boolean;
+    fileName?: string;
+    mimeType?: string;
+    fileSize?: number;
+    audioBlob?: Blob;
+    receiverId?: number;
+    taskTitle?: string;
+    taskDescription?: string;
+    taskPriority?: string;
+    taskStatus?: string;
+    taskId?: number;
+    dueDate?: string;
+    estimatedTime?: string;
 }
 
 export interface Chat {
@@ -258,9 +287,10 @@ export interface CreateDiscussionRequest {
 }
 
 export enum MessageType {
-    Text,
-    Voice,
-    File
+  Text = 1,
+  File = 2,
+  Voice = 3,
+  Task = 4,
 }
 
 export interface SendMessageRequest {
@@ -288,3 +318,11 @@ export interface Discussion {
     createdAt : Date;
     updatedAt : Date;
 }
+
+export const formatFileSize = (bytes: number): string => {
+  if (bytes === 0) return '0 Bytes';
+  const k = 1024;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+};

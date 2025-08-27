@@ -1,7 +1,7 @@
 import { useAtomValue } from "jotai";
-import { ArrowLeft, Check, Edit3, FileIcon, MessageSquare, Paperclip, Plus, PlusIcon, Send, Trash2, Users, X } from "lucide-react";
+import { ArrowLeft, Check, Edit3, FileIcon, MessageSquare, Mic, Paperclip, Pause, Play, Plus, PlusIcon, Send, Square, Trash2, Users, Volume2, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { MessageType, type SendMessageRequest, type User } from "~/help";
+import { formatFileSize, MessageType, TaskPriority, type SendMessageRequest, type User } from "~/help";
 import type { CreateDiscussionRequest } from "~/help";
 import type { Discussion } from "~/help";
 import type { Message } from "~/help";
@@ -25,7 +25,26 @@ const ChatApplication: React.FC = () => {
   const [newDiscussionTitle, setNewDiscussionTitle] = useState('');
   const [newDiscussionDescription, setNewDiscussionDescription] = useState('');
   const [currentView, setCurrentView] = useState('users');
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingTime, setRecordingTime] = useState(0);
+  const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
+  const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
+  const [playingVoiceId, setPlayingVoiceId] = useState<number | null>(null);
   const [error, setError] = useState('');
+
+  const [showTaskDropdown, setShowTaskDropdown] = useState(false);
+  const [showCreateTask, setShowCreateTask] = useState(false);
+  const [taskData, setTaskData] = useState({
+    title: '',
+    description: '',
+    priority: TaskPriority.Medium,
+    dueDate: '',
+    estimatedTime: '',
+    assignedUsers: []
+  });
+
+  const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const audioStreamRef = useRef<MediaStream | null>(null);
 
   const baseUrl = "http://localhost:5178";
 
@@ -123,7 +142,9 @@ const ChatApplication: React.FC = () => {
   const handleFileUpload = async (file: File) => {
     if (!selectedDiscussion || !currentUser) return;
     setUploading(true);
-
+    
+    console.log('Uploading file:', file.name, 'Size:', file.size, 'Type:', file.type);
+    
     const formData = new FormData();
     formData.append('discussionId', selectedDiscussion.id.toString());
     formData.append('senderId', currentUser.userId.toString());
@@ -131,31 +152,32 @@ const ChatApplication: React.FC = () => {
     formData.append('content', `File: ${file.name}`);
     formData.append('messageType', MessageType.File.toString());
     formData.append('file', file);
-  
+ 
     try {
         const response = await fetch(`${baseUrl}/api/Chat/messages/send-with-file`, {
             method: 'POST',
             body: formData
         });
-        
+       
         if (!response.ok) {
             const error = await response.text();
             throw new Error(error || 'File upload failed');
         }
-        
+       
         const message = await response.json();
-        
+        console.log('File upload response:', message);
+       
         setMessages(prev => [...prev, message]);
-        
+       
         if (fileInputRef.current) fileInputRef.current.value = '';
         setSelectedFile(null);
-        
-    } catch (error) {
-        console.error('Error uploading file:', error);
-    } finally {
-        setUploading(false);
-    }
-};
+       
+      } catch (error) {
+          console.error('Error uploading file:', error);
+      } finally {
+          setUploading(false);
+      }
+  };
 
 
   const sendMessage = async () => {
@@ -246,6 +268,243 @@ const ChatApplication: React.FC = () => {
     setCurrentView('chat');
   };
 
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioStreamRef.current = stream;
+      
+      const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+      setMediaRecorder(recorder);
+      
+      const chunks: Blob[] = [];
+      
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          chunks.push(e.data);
+        }
+      };
+      
+      recorder.onstop = () => {
+        const blob = new Blob(chunks, { type: 'audio/webm' });
+        setAudioBlob(blob);
+        
+        stream.getTracks().forEach(track => track.stop());
+        audioStreamRef.current = null;
+      };
+      
+      recorder.start(100);
+      setIsRecording(true);
+      setRecordingTime(0);
+      
+      recordingIntervalRef.current = setInterval(() => {
+        setRecordingTime(prev => {
+          if (prev >= 49) {
+            stopRecording();
+            return 50;
+          }
+          return prev + 1;
+        });
+      }, 1000);
+      
+    } catch (error) {
+      console.error('Error starting recording:', error);
+      alert('Could not access microphone. Please check permissions.');
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorder && isRecording) {
+      mediaRecorder.stop();
+      setIsRecording(false);
+      if (recordingIntervalRef.current) {
+        clearInterval(recordingIntervalRef.current);
+      }
+      if (audioStreamRef.current) {
+        audioStreamRef.current.getTracks().forEach(track => track.stop());
+      }
+    }
+  };
+
+  const cancelRecording = () => {
+    stopRecording();
+    setAudioBlob(null);
+    setRecordingTime(0);
+  };
+
+  const sendVoiceMessage = async () => {
+    if (!audioBlob || !selectedDiscussion || !currentUser) return;
+   
+    const formData = new FormData();
+    formData.append('discussionId', selectedDiscussion.id.toString());
+    formData.append('senderId', currentUser.userId.toString());
+    formData.append('receiverId', (selectedUser?.userId ?? '').toString());
+    formData.append('content', 'Voice message');
+    formData.append('messageType', '3');
+    formData.append('duration', recordingTime.toString());
+    formData.append('voiceFile', audioBlob, 'voice_message.webm');
+   
+    try {
+      setUploading(true);
+      console.log('Sending voice message with duration:', recordingTime);
+     
+      const response = await fetch(`${baseUrl}/api/Chat/messages/send-with-voice`, {
+        method: 'POST',
+        body: formData,
+      });
+     
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`Failed to send voice message: ${error}`);
+      }
+     
+      const result = await response.json();
+      console.log('Voice message sent successfully:', result);
+     
+      const newVoiceMessage: Message = {
+        id: result.id,
+        discussionId: selectedDiscussion?.id,
+        senderId: result.senderId,
+        senderName: currentUser.fullName,
+        content: result.content,
+        messageType: result.messageType,
+        isEdited: false,
+        timestamp: new Date(),
+        createdAt: new Date(result.createdAt),
+        fileReference: result.fileReference,
+        duration: result.duration || recordingTime,
+        receiverId: selectedUser?.userId,
+      };
+     
+      setMessages(prev => [...prev, newVoiceMessage]);
+      setAudioBlob(null);
+      setRecordingTime(0);
+     
+    } catch (error) {
+      console.error('Error sending voice message:', error);
+      alert(error instanceof Error ? error.message : 'Failed to send voice message');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const base64ToBlob = (base64Data: string, mimeType: string = 'audio/webm'): Blob | undefined => {
+    try {
+      console.log('Converting base64 to blob, input length:', base64Data.length);
+  
+      if (!base64Data || !base64Data.includes(',')) {
+        throw new Error('Invalid base64 data format: missing comma');
+      }
+  
+      const parts = base64Data.split(',');
+      if (parts.length !== 2) {
+        throw new Error('Invalid base64 data format: incorrect parts');
+      }
+  
+      const base64String = parts[1];
+      console.log('Base64 string length after split:', base64String.length);
+  
+      if (!base64String) {
+        throw new Error('Empty base64 string');
+      }
+  
+      const byteCharacters = atob(base64String);
+      const byteNumbers = new Array(byteCharacters.length);
+  
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+  
+      const byteArray = new Uint8Array(byteNumbers);
+      const blob = new Blob([byteArray], { type: mimeType });
+  
+      console.log('Created blob size:', blob.size, 'type:', blob.type);
+      return blob;
+    } catch (error) {
+      console.error('Error converting base64 to blob:', error);
+      return undefined;
+    }
+  };
+
+  const playVoiceMessage = async (message: Message) => {
+    if (playingVoiceId === message.id) {
+      setPlayingVoiceId(null);
+      return;
+    }
+  
+    let audio: HTMLAudioElement | null = null;
+  
+    try {
+      let audioBlob: Blob | undefined;
+      let audioUrl: string;
+  
+      if (message.audioBlob) {
+        console.log('Using local audioBlob');
+        audioBlob = message.audioBlob;
+      }
+      else if (message.fileReference && message.fileReference.startsWith('data:')) {
+        console.log('Using fileReference base64 data');
+        const mimeType = message.fileReference.split(';')[0].split(':')[1] || 'audio/webm';
+        audioBlob = base64ToBlob(message.fileReference, mimeType);
+        if (!audioBlob) {
+          throw new Error('Failed to create blob from base64 data');
+        }
+      }
+      else {
+        console.log(`Fetching voice message from API for message ID: ${message.id}`);
+        const response = await fetch(`${baseUrl}/api/Chat/messages/${message.id}/voice`, {
+          method: 'GET',
+          headers: {
+            'Accept': 'audio/webm,audio/wav,audio/ogg,audio/mp3,audio/mpeg,audio/m4a',
+          },
+        });
+  
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`Failed to fetch voice message: ${errorText}`);
+        }
+  
+        audioBlob = await response.blob();
+        if (audioBlob.size === 0) {
+          throw new Error('Empty audio data received from server');
+        }
+  
+        const mimeType = response.headers.get('Content-Type') || 'audio/webm';
+        console.log('Fetched blob size:', audioBlob.size, 'type:', mimeType);
+      }
+  
+      audio = new Audio();
+      audioUrl = URL.createObjectURL(audioBlob);
+      audio.src = audioUrl;
+  
+      console.log('Starting audio playback...');
+      await audio.play();
+      setPlayingVoiceId(message.id);
+  
+      audio.onended = () => {
+        console.log('Audio playback ended');
+        setPlayingVoiceId(null);
+        URL.revokeObjectURL(audioUrl);
+      };
+  
+      audio.onerror = (error) => {
+        console.error('Audio playback error:', error);
+        setPlayingVoiceId(null);
+        URL.revokeObjectURL(audioUrl);
+        alert('Error playing voice message');
+      };
+    } catch (error) {
+      console.error('Error in playVoiceMessage:', error);
+      alert(error instanceof Error ? error.message : 'Failed to play voice message');
+      if (audio) {
+        audio.src = '';
+      }
+    }
+  };
+
+  const handleCreateDiscussion = () => {
+    setShowCreateDiscussion(true);
+  };
+
   useEffect(() => {
     if (!selectedDiscussion) return;
 
@@ -270,21 +529,22 @@ const ChatApplication: React.FC = () => {
     return new Date(dateString).toLocaleString('tr-TR');
   };
 
+  const formatTime = (seconds: number) => {
+    const min = Math.floor(seconds / 60);
+    const sec = seconds % 60;
+    return `${min}:${sec < 10 ? '0' : ''}${sec}`;
+  };
+
   return (
-    <div className="flex h-screen bg-gray-100">
-      <div
-        className={`
-          ${currentView === "users" ? "flex" : "hidden"}
-          md:flex
-          flex-col
-          w-full md:w-1/4
-          bg-white border-r border-gray-200
-        `}
-      >
-        <div className="p-4 border-b border-gray-200">
-          <h2 className="text-lg font-bold text-gray-800 flex items-center">
-            <Users className="mr-2 text-blue-500" size={20} />
-            Users
+    <div className="flex h-screen bg-gradient-to-br from-slate-50 to-blue-50">
+      <div className={`
+        ${currentView === "users" ? "flex" : "hidden"}
+        lg:flex flex-col w-full lg:w-80 bg-white/90 backdrop-blur-sm border-r border-slate-200/60 shadow-lg
+      `}>
+        <div className="p-6 border-b border-slate-200/60 bg-gradient-to-r from-blue-600 to-purple-600">
+          <h2 className="text-xl font-bold text-white flex items-center">
+            <Users className="mr-3 text-blue-100" size={24} />
+            Contacts
           </h2>
         </div>
         <div className="flex-1 overflow-y-auto">
@@ -292,47 +552,50 @@ const ChatApplication: React.FC = () => {
             <div
               key={user.userId}
               onClick={() => handleUserSelect(user)}
-              className={`p-4 cursor-pointer border-b border-gray-100 hover:bg-blue-50 transition-colors ${
+              className={`p-4 cursor-pointer border-b border-slate-100 hover:bg-gradient-to-r hover:from-blue-50 hover:to-purple-50 transition-all duration-200 ${
                 selectedUser?.userId === user.userId
-                  ? "bg-blue-100 border-blue-300"
+                  ? "bg-gradient-to-r from-blue-100 to-purple-100 border-blue-200"
                   : ""
               }`}
             >
-              <div className="font-medium text-gray-900">
-                {user.kullaniciAdi}
+              <div className="flex items-center space-x-3">
+                <div className="w-12 h-12 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full flex items-center justify-center text-white font-semibold text-lg">
+                  {user.kullaniciAdi[0]}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-semibold text-slate-800 truncate">
+                    {user.kullaniciAdi}
+                  </div>
+                  {user.email && (
+                    <div className="text-sm text-slate-500 truncate">{user.email}</div>
+                  )}
+                </div>
               </div>
-              {user.email && (
-                <div className="text-sm text-gray-500">{user.email}</div>
-              )}
             </div>
           ))}
         </div>
       </div>
 
-      <div
-        className={`
-          ${currentView === "discussions" ? "flex" : "hidden"}
-          ${selectedUser ? "md:flex" : "md:hidden"}
-          flex-col
-          w-full md:w-1/3
-          bg-white border-r border-gray-200
-        `}
-      >
-        <div className="p-4 border-b border-gray-200 flex items-center justify-between">
-          <div className="flex items-center">
+      <div className={`
+        ${currentView === "discussions" ? "flex" : "hidden"}
+        ${selectedUser ? "lg:flex" : "lg:hidden"}
+        flex-col w-full lg:w-96 bg-white/90 backdrop-blur-sm border-r border-slate-200/60
+      `}>
+        <div className="p-4 border-b border-slate-200/60 bg-gradient-to-r from-purple-600 to-pink-600 flex items-center justify-between">
+          <div className="flex items-center text-white">
             <button
               onClick={goBack}
-              className="mr-3 p-2 hover:bg-gray-100 rounded-full md:hidden"
+              className="mr-3 p-2 hover:bg-white/20 rounded-full transition lg:hidden"
             >
               <ArrowLeft size={20} />
             </button>
-            <h2 className="text-lg font-bold text-gray-800">
+            <h2 className="text-lg font-bold">
               {selectedUser?.kullaniciAdi || "Discussions"}
             </h2>
           </div>
           <button
             onClick={() => setShowCreateDiscussion(true)}
-            className="bg-blue-500 text-white px-3 py-2 rounded-lg hover:bg-blue-600 flex items-center"
+            className="bg-white/20 text-white px-4 py-2 rounded-lg hover:bg-white/30 transition flex items-center backdrop-blur-sm"
           >
             <Plus className="mr-1" size={16} />
             <span className="hidden md:inline">New</span>
@@ -340,65 +603,71 @@ const ChatApplication: React.FC = () => {
         </div>
         <div className="flex-1 overflow-y-auto p-3">
           {loading ? (
-            <div className="text-center py-6 text-gray-500">Loading...</div>
+            <div className="text-center py-8 text-slate-500">
+              <div className="animate-spin w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full mx-auto"></div>
+              <p className="mt-2">Loading...</p>
+            </div>
           ) : discussions.length > 0 ? (
             <div className="space-y-3">
               {discussions.map((discussion) => (
                 <div
                   key={discussion.id}
                   onClick={() => handleDiscussionSelect(discussion)}
-                  className={`p-4 rounded-lg cursor-pointer border transition ${
+                  className={`p-4 rounded-xl cursor-pointer border transition-all duration-200 hover:shadow-md ${
                     selectedDiscussion?.id === discussion.id
-                      ? "bg-blue-100 border-blue-300"
-                      : "bg-gray-50 hover:bg-gray-100 border-gray-200"
+                      ? "bg-gradient-to-r from-blue-100 to-purple-100 border-blue-300 shadow-md"
+                      : "bg-white/80 hover:bg-white/90 border-slate-200 hover:border-slate-300"
                   }`}
                 >
-                  <div className="font-semibold text-gray-900">
+                  <div className="font-semibold text-slate-800 mb-1">
                     {discussion.title}
                   </div>
-                  <div className="text-sm text-gray-600 mt-1 line-clamp-2">
+                  <div className="text-sm text-slate-600 mb-2 line-clamp-2">
                     {discussion.description}
                   </div>
-                  <div className="text-xs text-gray-400 mt-1">
+                  <div className="text-xs text-slate-400">
                     {formatDate(discussion.createdAt)}
                   </div>
                 </div>
               ))}
             </div>
           ) : (
-            <div className="text-center py-10 text-gray-500">
-              <MessageSquare size={40} className="mx-auto mb-2 opacity-40" />
-              No discussions yet
+            <div className="text-center py-12 text-slate-500">
+              <MessageSquare size={48} className="mx-auto mb-3 opacity-40" />
+              <p>No discussions yet</p>
             </div>
           )}
         </div>
       </div>
 
-      <div
-        className={`
-          ${currentView === "chat" ? "flex" : "hidden"}
-          ${selectedDiscussion ? "md:flex" : "md:hidden"}
-          flex-col w-full md:flex-1 bg-white
-        `}
-      >
-        <div className="border-b border-gray-200 p-4 flex items-center">
+      <div className={`
+        ${currentView === "chat" ? "flex" : "hidden"}
+        ${selectedDiscussion ? "lg:flex" : "lg:hidden"}
+        flex-col w-full lg:flex-1 bg-white/90 backdrop-blur-sm
+      `}>
+        <div className="border-b border-slate-200/60 p-4 bg-gradient-to-r from-pink-600 to-orange-500 flex items-center">
           <button
             onClick={goBack}
-            className="mr-3 p-2 hover:bg-gray-100 rounded-full md:hidden"
+            className="mr-3 p-2 hover:bg-white/20 rounded-full text-white transition lg:hidden"
           >
             <ArrowLeft size={20} />
           </button>
-          <div>
-            <h1 className="text-lg font-bold text-gray-800">
-              {selectedDiscussion?.title}
-            </h1>
-            <p className="text-sm text-gray-500">
-              Chat with {selectedUser?.kullaniciAdi}
-            </p>
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center text-white font-semibold">
+              {selectedUser?.kullaniciAdi?.[0]}
+            </div>
+            <div>
+              <h1 className="text-lg font-bold text-white">
+                {selectedDiscussion?.title}
+              </h1>
+              <p className="text-sm text-white/80">
+                Chat with {selectedUser?.kullaniciAdi}
+              </p>
+            </div>
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50">
+        <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gradient-to-b from-slate-50/80 to-white/80">
           {messages.map((message) => (
             <div
               key={message.id}
@@ -409,29 +678,28 @@ const ChatApplication: React.FC = () => {
               }`}
             >
               <div
-                className={`max-w-[80%] px-4 py-2 rounded-2xl shadow ${
+                className={`max-w-[85%] sm:max-w-[75%] px-4 py-3 rounded-2xl shadow-md backdrop-blur-sm ${
                   message.senderId === currentUser?.userId
-                    ? "bg-blue-500 text-white"
-                    : "bg-white border border-gray-200 text-gray-800"
+                    ? "bg-gradient-to-r from-blue-500 to-purple-600 text-white"
+                    : "bg-white/90 border border-slate-200 text-slate-800"
                 }`}
               >
-                <div className="text-xs opacity-75 mb-1">
+                <div className="text-xs opacity-75 mb-2">
                   {message.senderName} • {formatDate(message.createdAt || new Date())}
                   {message.isEdited && " (edited)"}
                 </div>
+                
                 {editingMessageId === message.id ? (
                   <div className="space-y-2">
                     <textarea
                       value={editingContent}
                       onChange={(e) => setEditingContent(e.target.value)}
-                      className="w-full p-2 border rounded text-gray-800 text-sm"
+                      className="w-full p-2 border rounded text-slate-800 text-sm"
                       rows={2}
                     />
                     <div className="flex space-x-2">
                       <button
-                        onClick={() =>
-                          editMessage(message.id, editingContent)
-                        }
+                        onClick={() => editMessage(message.id, editingContent)}
                         className="p-1 bg-green-500 text-white rounded"
                       >
                         <Check size={14} />
@@ -441,7 +709,7 @@ const ChatApplication: React.FC = () => {
                           setEditingMessageId(null);
                           setEditingContent("");
                         }}
-                        className="p-1 bg-gray-400 text-white rounded"
+                        className="p-1 bg-slate-400 text-white rounded"
                       >
                         <X size={14} />
                       </button>
@@ -449,47 +717,62 @@ const ChatApplication: React.FC = () => {
                   </div>
                 ) : (
                   <>
-                    {message.messageType === MessageType.File ? (
-                        message.fileReference ? (
-                            <a
-                            href={`${baseUrl}/api/Chat/files${message.fileReference}`}
-                            download
-                            className="inline-flex items-center text-blue-600 hover:underline"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            >
-                            <FileIcon className="mr-2" size={16} />
-                            {message.content?.replace('File: ', '')}
-                            </a>
-                        ) : (
-                            <div className="inline-flex items-center text-gray-500">
-                            <FileIcon className="mr-2" size={16} />
-                            {message.content?.replace('File: ', '')} (File not available)
-                            </div>
-                        )
-                        ) : (
-                        <p>{message.content}</p>
-                        )}
-
-                    {message.senderId === currentUser?.userId && (
-                      <div className="flex space-x-2 mt-1 text-xs opacity-75">
-                        <button
-                          onClick={() => {
-                            setEditingMessageId(message.id);
-                            setEditingContent(message.content || "");
-                          }}
-                          className="hover:text-blue-600"
-                        >
-                          <Edit3 size={12} />
-                        </button>
-                        <button
-                          onClick={() => deleteMessage(message.id)}
-                          className="hover:text-red-600"
-                        >
-                          <Trash2 size={12} />
-                        </button>
+                   {message.messageType === MessageType.Voice ? (
+                    <div className="flex items-center space-x-3 py-2">
+                      <button
+                        onClick={() => playVoiceMessage(message)}
+                        className={`p-2 rounded-full transition ${
+                          message.senderId === currentUser?.userId
+                            ? 'bg-white/20 hover:bg-white/30 text-white'
+                            : 'bg-blue-100 hover:bg-blue-200 text-blue-600'
+                        }`}
+                        disabled={!message.fileReference && !message.audioBlob}
+                      >
+                        {playingVoiceId === message.id ? <Pause size={16} /> : <Play size={16} />}
+                      </button>
+                      <div className="flex items-center space-x-2">
+                        <Volume2 size={16} className="opacity-70" />
+                        <span className="text-sm">{formatTime(message.duration || 0)}</span>
                       </div>
+                      {process.env.NODE_ENV === 'development' && (
+                        <span className="text-xs opacity-50">
+                          {message.fileReference ? '(Server)' : message.audioBlob ? '(Local)' : '(No Audio)'}
+                        </span>
+                      )}
+                    </div>
+                    ) : message.messageType === MessageType.File ? (
+                      <div className="inline-flex items-center">
+                        <FileIcon className="mr-2" size={16} />
+                        {message.fileName}
+                        {message.fileSize && (
+                          <span className="ml-2 text-sm opacity-75">
+                            ({formatFileSize(message.fileSize)})
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="whitespace-pre-wrap">{message.content}</p>
                     )}
+
+                  {message.senderId === currentUser?.userId && (message.messageType === MessageType.Text || message.messageType === MessageType.Voice) && (
+                    <div className="flex space-x-2 mt-2 text-xs opacity-75">
+                      <button
+                        onClick={() => {
+                          setEditingMessageId(message.id);
+                          setEditingContent(message.content || '');
+                        }}
+                        className="hover:text-blue-200"
+                      >
+                        <Edit3 size={12} />
+                      </button>
+                      <button
+                        onClick={() => deleteMessage(message.id)}
+                        className="hover:text-red-300"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+                  )}
                   </>
                 )}
               </div>
@@ -497,29 +780,116 @@ const ChatApplication: React.FC = () => {
           ))}
         </div>
 
-        <div className="border-t border-gray-200 p-3">
+        <div className="border-t border-slate-200/60 p-4 bg-white/90 backdrop-blur-sm">
           <div className="flex items-end space-x-2">
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="p-2 text-gray-500 hover:text-gray-700 rounded-full hover:bg-gray-100"
-            disabled={uploading}
-            type="button"
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="p-3 text-slate-500 hover:text-slate-700 rounded-full hover:bg-slate-100 transition"
+              disabled={uploading || isRecording}
             >
-            <Paperclip size={20} />
-            <input
+              <Paperclip size={20} />
+              <input
                 type="file"
                 ref={fileInputRef}
                 onChange={handleFileChange}
                 className="hidden"
-                disabled={uploading}
-            />
+                disabled={uploading || isRecording}
+              />
             </button>
+            
+            <button
+              onClick={isRecording ? stopRecording : startRecording}
+              className={`p-3 rounded-full transition-all duration-200 ${
+                isRecording 
+                  ? "bg-red-500 text-white animate-pulse" 
+                  : "text-slate-500 hover:text-slate-700 hover:bg-slate-100"
+              }`}
+              disabled={uploading}
+            >
+              {isRecording ? <Square size={20} /> : <Mic size={20} />}
+            </button>
+            
             <div className="flex-1 relative">
+              {isRecording && (
+                <div className="absolute bottom-16 left-0 right-0 bg-red-50 border border-red-200 rounded-xl p-4 shadow-lg backdrop-blur-sm">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
+                      <span className="text-red-600 font-medium">
+                        Recording: {formatTime(recordingTime)}
+                      </span>
+                      <div className="text-sm text-red-500">
+                        ({50 - recordingTime}s remaining)
+                      </div>
+                    </div>
+                    <div className="flex space-x-2">
+                      <button
+                        onClick={cancelRecording}
+                        className="p-2 text-red-500 hover:text-red-700 transition"
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
+              {audioBlob && !isRecording && (
+                <div className="absolute bottom-16 left-0 right-0 bg-blue-50 border border-blue-200 rounded-xl p-4 shadow-lg backdrop-blur-sm">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-3">
+                      <Volume2 className="text-blue-600" size={20} />
+                      <span className="text-blue-800 font-medium">
+                        Voice message ({formatTime(recordingTime)})
+                      </span>
+                    </div>
+                    <div className="flex space-x-2">
+                      <button
+                        onClick={sendVoiceMessage}
+                        disabled={uploading}
+                        className="px-3 py-1 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition text-sm"
+                      >
+                        Send
+                      </button>
+                      <button
+                        onClick={() => setAudioBlob(null)}
+                        className="p-1 text-blue-500 hover:text-blue-700 transition"
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
+              {selectedFile && (
+                <div className="absolute bottom-16 left-0 bg-slate-50 p-3 rounded-xl shadow-md border border-slate-300 min-w-64 max-w-full backdrop-blur-sm">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2 overflow-hidden">
+                      <FileIcon className="text-blue-500 flex-shrink-0" size={20} />
+                      <span className="text-sm truncate">{selectedFile.name}</span>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setSelectedFile(null);
+                        if (fileInputRef.current) fileInputRef.current.value = "";
+                      }}
+                      className="text-slate-500 hover:text-red-500 transition ml-2"
+                    >
+                      <X size={18} />
+                    </button>
+                  </div>
+                  {uploading && (
+                    <div className="text-xs text-slate-500 mt-2">Uploading...</div>
+                  )}
+                </div>
+              )}
+              
               <textarea
                 value={newMessage}
                 onChange={(e) => setNewMessage(e.target.value)}
-                placeholder="Type your message..."
-                className="w-full p-3 pr-12 border border-gray-300 rounded-xl resize-none focus:ring-2 focus:ring-blue-500"
+                placeholder={isRecording ? "Recording voice message..." : "Type your message..."}
+                className="w-full p-4 pr-12 border border-slate-300 rounded-2xl resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white/90 backdrop-blur-sm transition-all duration-200"
                 rows={1}
                 onKeyPress={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
@@ -527,33 +897,14 @@ const ChatApplication: React.FC = () => {
                     sendMessage();
                   }
                 }}
-                disabled={uploading}
+                disabled={uploading || isRecording}
               />
-              {selectedFile && (
-                <div className="absolute bottom-14 left-0 bg-gray-50 p-3 rounded-xl shadow-md border border-gray-300 w-64">
-                    <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-2 overflow-hidden">
-                        <FileIcon className="text-blue-500" size={20} />
-                        <span className="text-sm truncate">{selectedFile.name}</span>
-                    </div>
-                    <button
-                        onClick={() => {
-                        setSelectedFile(null);
-                        if (fileInputRef.current) fileInputRef.current.value = "";
-                        }}
-                        className="text-gray-500 hover:text-red-500 transition"
-                    >
-                        <X size={18} />
-                    </button>
-                    </div>
-                    {uploading && <div className="text-xs text-gray-500 mt-2">Uploading...</div>}
-                </div>
-                )}
             </div>
+            
             <button
               onClick={sendMessage}
-              disabled={!newMessage.trim() && !selectedFile}
-              className="bg-blue-500 text-white p-3 rounded-xl hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
+              disabled={(!newMessage.trim() && !selectedFile) || uploading || isRecording}
+              className="bg-gradient-to-r from-blue-500 to-purple-600 text-white p-3 rounded-2xl hover:from-blue-600 hover:to-purple-700 disabled:from-slate-300 disabled:to-slate-400 disabled:cursor-not-allowed transition-all duration-200 shadow-lg"
             >
               {uploading ? (
                 <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
@@ -566,52 +917,59 @@ const ChatApplication: React.FC = () => {
       </div>
 
       {!selectedUser && (
-        <div className="hidden md:flex flex-1 items-center justify-center bg-white text-gray-500">
+        <div className="hidden lg:flex flex-1 items-center justify-center bg-gradient-to-br from-blue-50 to-purple-50">
           <div className="text-center">
-            <Users size={40} className="mx-auto mb-2 opacity-40" />
-            <p>Select a user to view discussions</p>
+            <div className="w-24 h-24 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Users size={40} className="text-white" />
+            </div>
+            <h3 className="text-xl font-semibold text-slate-700 mb-2">Welcome to Chat</h3>
+            <p className="text-slate-500">Select a contact to start messaging</p>
           </div>
         </div>
       )}
+      
       {selectedUser && !selectedDiscussion && (
-        <div className="hidden md:flex flex-1 items-center justify-center bg-white text-gray-500">
+        <div className="hidden lg:flex flex-1 items-center justify-center bg-gradient-to-br from-purple-50 to-pink-50">
           <div className="text-center">
-            <MessageSquare size={40} className="mx-auto mb-2 opacity-40" />
-            <p>Select a discussion to start chatting</p>
+            <div className="w-24 h-24 bg-gradient-to-br from-purple-400 to-pink-500 rounded-full flex items-center justify-center mx-auto mb-4">
+              <MessageSquare size={40} className="text-white" />
+            </div>
+            <h3 className="text-xl font-semibold text-slate-700 mb-2">Select a Discussion</h3>
+            <p className="text-slate-500">Choose a conversation to start chatting</p>
           </div>
         </div>
       )}
 
       {showCreateDiscussion && (
-        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-lg">
-            <h3 className="text-lg font-bold mb-4">New Discussion</h3>
-            <div className="space-y-3">
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl">
+            <h3 className="text-xl font-bold mb-6 text-slate-800">New Discussion</h3>
+            <div className="space-y-4">
               <input
                 type="text"
                 value={newDiscussionTitle}
                 onChange={(e) => setNewDiscussionTitle(e.target.value)}
-                className="w-full p-3 border rounded-lg"
-                placeholder="Title"
+                className="w-full p-4 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+                placeholder="Discussion title"
               />
               <textarea
                 value={newDiscussionDescription}
                 onChange={(e) => setNewDiscussionDescription(e.target.value)}
-                className="w-full p-3 border rounded-lg"
+                className="w-full p-4 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
                 rows={3}
-                placeholder="Description"
+                placeholder="Description (optional)"
               />
             </div>
-            <div className="flex space-x-3 mt-5">
+            <div className="flex space-x-3 mt-6">
               <button
                 onClick={createDiscussion}
-                className="flex-1 bg-blue-500 text-white py-2 rounded-lg hover:bg-blue-600"
+                className="flex-1 bg-gradient-to-r from-blue-500 to-purple-600 text-white py-3 rounded-xl hover:from-blue-600 hover:to-purple-700 transition font-medium"
               >
                 Create
               </button>
               <button
                 onClick={() => setShowCreateDiscussion(false)}
-                className="flex-1 bg-gray-300 text-gray-700 py-2 rounded-lg hover:bg-gray-400"
+                className="flex-1 bg-slate-100 text-slate-700 py-3 rounded-xl hover:bg-slate-200 transition font-medium"
               >
                 Cancel
               </button>
