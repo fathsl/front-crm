@@ -42,43 +42,22 @@ export enum ProjectStatus {
     Completed
 }
 
-export const TaskStatus = {
-  Backlog: 'Backlog',
-  Todo: 'Todo',
-  InProgress: 'InProgress',
-  InReview: 'InReview',
-  Done: 'Done'
-};
-
-export const TaskPriority = {
-  Low: 'Low',
-  Medium: 'Medium',
-  High: 'High',
-  Urgent: 'Urgent'
-};
+import { TaskStatus, TaskPriority } from '~/types/task';
 
 export interface Task {
-    id : number;
+    id: number;
     title: string;
     description: string;
-    priority: number;
-    status: Status;
-    DueDate : Date;
-    estimatedTime : string;
-    SortOrder : number;
-    createdByUserId : number;
-    updatedByUserId : number;
-    createdAt : Date;
-    updatedAt : Date;
-    assignedUsers : User[];
-}
-
-export enum Status {
-    Pending,
-    ToDo,
-    InProgress,
-    InReview,
-    Done
+    priority: TaskPriority;
+    status: TaskStatus;
+    DueDate?: string | null;
+    estimatedTime?: string;
+    SortOrder?: number;
+    createdByUserId?: number;
+    updatedByUserId?: number | null;
+    createdAt?: string | Date;
+    updatedAt?: string | Date;
+    assignedUsers?: User[];
 }
 
 export interface TaskAssignments {
@@ -247,11 +226,12 @@ export interface Message {
     audioBlob?: Blob;
     receiverId?: number;
     taskTitle?: string;
+    assignedUserIds: number[];
     taskDescription?: string;
-    taskPriority?: string;
-    taskStatus?: string;
+    taskPriority?: TaskPriority;
+    taskStatus?: TaskStatus;
     taskId?: number;
-    dueDate?: string;
+    dueDate?: Date | string;
     estimatedTime?: string;
 }
 

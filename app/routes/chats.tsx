@@ -1,11 +1,37 @@
 import { useAtomValue } from "jotai";
-import { AlertCircle, ArrowLeft, Check, CheckCircle, Clock, Edit3, FileIcon, FileText, MessageSquare, Mic, Paperclip, Pause, Play, Plus, PlusIcon, Send, Square, Trash2, Users, Volume2, X, XCircle } from "lucide-react";
+import { AlertCircle, ArrowLeft, Check, CheckCircle, Clock, DownloadIcon, Edit3, FileIcon, FileText, MessageSquare, Mic, Paperclip, Pause, Play, Plus, PlusIcon, Send, Square, Trash2, Users, Volume2, X, XCircle } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { formatFileSize, MessageType, TaskPriority, TaskStatus, type SendMessageRequest, type User } from "~/help";
-import type { CreateDiscussionRequest } from "~/help";
+import { formatFileSize, MessageType, type SendMessageRequest, type User } from "~/help";
+import type { Client, CreateDiscussionRequest, Project } from "~/help";
 import type { Discussion } from "~/help";
 import type { Message } from "~/help";
 import { userAtom } from "~/utils/userAtom";
+import { TaskMessage } from "~/components/TaskMessage";
+import { TaskStatus, TaskPriority } from '~/types/task';
+
+interface MessageResponse {
+  id: number;
+  discussionId: number;
+  senderId: number;
+  receiverId?: number;
+  content: string;
+  messageType: number;
+  taskId?: number;
+  taskTitle?: string;
+  taskDescription?: string;
+  taskStatus?: TaskStatus;
+  taskPriority?: TaskPriority;
+  dueDate?: Date | null;
+  estimatedTime?: string;
+  assignedUserIds?: number[];
+  fileReference?: string;
+  fileName?: string;
+  mimeType?: string;
+  fileSize?: number;
+  duration?: number;
+  createdAt: Date;
+  timestamp: string;
+}
 
 const ChatApplication: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
@@ -13,10 +39,12 @@ const ChatApplication: React.FC = () => {
   const [discussions, setDiscussions] = useState<Discussion[]>([]);
   const [selectedDiscussion, setSelectedDiscussion] = useState<Discussion | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const currentUser = useAtomValue(userAtom);
+  const currentUser = useAtomValue(userAtom) as unknown as User;
   const [editingMessageId, setEditingMessageId] = useState<number | null>(null);
   const [editingContent, setEditingContent] = useState('');
   const [showCreateDiscussion, setShowCreateDiscussion] = useState(false);
@@ -33,20 +61,43 @@ const ChatApplication: React.FC = () => {
   const [error, setError] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [drawerType, setDrawerType] = useState<MessageType | null>(null);
+  const [drawerType, setDrawerType] = useState<MessageType>(MessageType.Text);
   const [taskContent, setTaskContent] = useState('');
   const [taskStatus, setTaskStatus] = useState(TaskStatus.Backlog);
+  const [taskDrawerOpen, setTaskDrawerOpen] = useState(false);
+  const [taskDrawerType, setTaskDrawerType] = useState<MessageType | null>(null);
+  const [taskFile, setTaskFile] = useState<File | null>(null);
+  const [taskAudioBlob, setTaskAudioBlob] = useState<Blob | null>(null);
+  const [taskRecording, setTaskRecording] = useState(false);
+  const [taskRecordingTime, setTaskRecordingTime] = useState(0);
+  const [showTaskDropdown, setShowTaskDropdown] = useState(false);
+  const [selectedClients, setSelectedClients] = useState<Client[]>([]);
+  const [selectedProjects, setSelectedProjects] = useState<Project[]>([]);
+  const [sending, setSending] = useState(false);
   const [taskData, setTaskData] = useState({
     title: '',
     description: '',
     priority: TaskPriority.Medium,
     dueDate: '',
     estimatedTime: '',
-    assignedUsers: []
+    assignedUsers: [],
+    discussionId: '',
+    senderId: '',
+    receiverId: '',
+    content: '',
+    messageType: '',
+    taskTitle: '',
+    taskStatus: '',
+    taskPriority: '',
+    assignedUserIds: []
   });
 
   const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const audioStreamRef = useRef<MediaStream | null>(null);
+  const taskAudioStreamRef = useRef<MediaStream | null>(null);
+  const taskRecordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const [taskMediaRecorder, setTaskMediaRecorder] = useState<MediaRecorder | null>(null);
+  const isRecordingCanceled = useRef(false);
 
   const baseUrl = "http://localhost:5178";
 
@@ -68,9 +119,42 @@ const ChatApplication: React.FC = () => {
       setLoading(false);
     }
   };
+  
+  const fetchClients = async () => {
+      try {
+        setLoading(true);
+        const response = await fetch(`${baseUrl}/api/Clients`);
+        if (response.ok) {
+          const data = await response.json();
+          setClients(data);
+        } else {
+          throw new Error('Failed to fetch clients');
+        }
+      } catch (err) {
+        setError('Kullanıcılar yüklenirken hata oluştu');
+        console.error('Error fetching clients:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+  
+    const fetchProjects = async () => {
+        try {
+          const response = await fetch('http://localhost:5178/api/Project');
+          const data = await response.json();
+          setProjects(data);
+        } catch (error) {
+          console.error('Projects fetch error:', error);
+        }
+      };
+    
+      useEffect(() => {
+        fetchProjects();
+      }, []);
 
   useEffect(() => {
     fetchUsers();
+    fetchClients();
   }, []);
 
   const fetchDiscussions = useCallback(async (userId: number) => {
@@ -182,6 +266,129 @@ const ChatApplication: React.FC = () => {
       }
   };
 
+  const handleTaskSend = async () => {
+    if ((!taskContent.trim() && !taskFile && !taskAudioBlob) || !selectedDiscussion || !currentUser) {
+      console.error('Missing required fields for task message');
+      return;
+    }
+    
+    setSending(true);
+    
+    interface TaskMessagePayload {
+      title: string;
+      description: string;
+      priority: TaskPriority;
+      dueDate: string | null;
+      assignedUsers: number[];
+      discussionId: number;
+      senderId: number;
+      receiverId: number | null;
+      content: string;
+      messageType: MessageType;
+      taskStatus: TaskStatus;
+      taskTitle: string;
+      fileSize?: number;
+      fileName?: string;
+      fileType?: string;
+      duration?: number;
+    }
+
+    try {
+      const taskTitle = taskContent.split('\n')[0].substring(0, 100);
+      const baseMessage: TaskMessagePayload = {
+        title: taskTitle,
+        description: taskContent,
+        priority: TaskPriority.Medium,
+        dueDate: null,
+        assignedUsers: [],
+        discussionId: selectedDiscussion.id,
+        senderId: currentUser.userId,
+        receiverId: selectedUser?.userId || null,
+        content: taskContent,
+        messageType: MessageType.Task,
+        taskStatus: taskStatus,
+        taskTitle: taskTitle
+      };
+
+      let response: Response;
+
+      if (taskFile) {
+        const formData = new FormData();
+        const messageData: TaskMessagePayload = {
+          ...baseMessage,
+          fileSize: taskFile.size,
+          fileName: taskFile.name,
+          fileType: taskFile.type
+        };
+        formData.append('message', JSON.stringify(messageData));
+        formData.append('file', taskFile);
+        
+        response = await fetch(`${baseUrl}/api/Chat/messages/send-with-file`, {
+          method: 'POST',
+          body: formData
+        });
+      } else if (taskAudioBlob) {
+        const formData = new FormData();
+        const messageData: TaskMessagePayload = {
+          ...baseMessage,
+          duration: Math.floor(taskRecordingTime / 1000), // Convert to seconds
+          fileSize: taskAudioBlob.size,
+          fileName: 'voice-message.webm',
+          fileType: 'audio/webm'
+        };
+        formData.append('message', JSON.stringify(messageData));
+        formData.append('audioFile', taskAudioBlob, 'voice-message.webm');
+        
+        response = await fetch(`${baseUrl}/api/Chat/messages/send-with-voice`, {
+          method: 'POST',
+          body: formData
+        });
+      } else {
+        // For text-only task messages
+        response = await fetch(`${baseUrl}/api/Chat/messages/send`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            ...baseMessage,
+            messageType: MessageType.Task
+          })
+        });
+      }
+  
+      if (response.ok) {
+        const result = await response.json();
+        setMessages(prev => [...prev, {
+          ...result,
+          taskId: result.id,
+          taskTitle: result.taskTitle || taskContent.split('\n')[0].substring(0, 100),
+          taskStatus: result.taskStatus || TaskStatus.Backlog,
+          taskPriority: result.taskPriority || TaskPriority.Medium,
+          assignedUserIds: result.assignedUserIds || [],
+          senderName: result.senderName || currentUser?.email || 'User',
+          isEdited: false,
+          timestamp: result.timestamp || new Date().toISOString()
+        }]);
+        
+        // Reset form
+        setTaskContent('');
+        setTaskFile(null);
+        setTaskAudioBlob(null);
+        setTaskStatus(TaskStatus.Backlog);
+        closeTaskDrawer();
+      } else {
+        const errorText = await response.text();
+        console.error('Server response:', response.status, errorText);
+        throw new Error(`Server returned ${response.status}: ${errorText}`);
+      }
+    } catch (error) {
+      console.error('Error sending task message:', error);
+      alert('Failed to send task. Please try again.');
+    } finally {
+      setSending(false);
+    }
+  };
 
   const sendMessage = async () => {
     if ((!newMessage.trim() && !selectedFile) || !selectedDiscussion || !currentUser) return;
@@ -376,6 +583,7 @@ const ChatApplication: React.FC = () => {
         fileReference: result.fileReference,
         duration: result.duration || recordingTime,
         receiverId: selectedUser?.userId,
+        assignedUserIds : []
       };
      
       setMessages(prev => [...prev, newVoiceMessage]);
@@ -506,7 +714,7 @@ const ChatApplication: React.FC = () => {
 
   const statusOptions = [
     { value: TaskStatus.Backlog, label: 'Backlog', icon: Clock, color: 'text-yellow-600 bg-yellow-100' },
-    { value: TaskStatus.Todo, label: 'Todo', icon: AlertCircle, color: 'text-blue-600 bg-blue-100' },
+    { value: TaskStatus.ToDo, label: 'Todo', icon: AlertCircle, color: 'text-blue-600 bg-blue-100' },
     { value: TaskStatus.InProgress, label: 'In Progress', icon: CheckCircle, color: 'text-green-600 bg-green-100' },
     { value: TaskStatus.InReview, label: 'In Review', icon: AlertCircle, color: 'text-violet-600 bg-violet-100' },
     { value: TaskStatus.Done, label: 'Done', icon: XCircle, color: 'text-red-600 bg-red-100' }
@@ -569,94 +777,115 @@ const ChatApplication: React.FC = () => {
     setTaskStatus(TaskStatus.Backlog);
   };
 
-  const handleSendTask = async () => {
-    if (!taskContent.trim() && !selectedFile && !audioBlob) return;
+  const handleTaskDropdownSelect = (type : MessageType) => {
+    setTaskDrawerType(type);
+    setTaskDrawerOpen(true);
+    setShowTaskDropdown(false);
+    setTaskContent('');
+    setTaskFile(null);
+    setTaskAudioBlob(null);
+    setTaskStatus(TaskStatus.Backlog);
+  };
 
+  const handleTaskFileChange = (e : React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setTaskFile(file);
+      setTaskContent(`File: ${file.name}`);
+    }
+  };
+
+  const handleSendTask = async (
+    taskContent: string,
+    taskFile: File | null,
+    taskAudioBlob: Blob | null,
+    taskRecordingTime: number,
+    taskDrawerType: MessageType,
+    taskStatus: TaskStatus,
+    selectedDiscussion: Discussion | null,
+    currentUser: User | null,
+    selectedUser: User | null,
+    setMessages: React.Dispatch<React.SetStateAction<Message[]>>,
+    closeTaskDrawer: () => void,
+    baseUrl: string,
+    clientIds: number[],
+    projectIds: number[],
+  ) => {
+    if (!taskContent.trim() && !taskFile && !taskAudioBlob) return;
+  
     const taskMessageData = {
-      discussionId: selectedDiscussion?.id,
-      senderId: currentUser?.userId,
+      discussionId: selectedDiscussion?.id ?? 0,
+      senderId: currentUser?.userId ?? 0,
       receiverId: selectedUser?.userId || null,
       content: taskContent,
       messageType: MessageType.Task,
       taskTitle: taskContent,
       taskDescription: null,
       taskStatus: taskStatus,
-      taskPriority: 'Medium',
+      taskPriority: TaskPriority.Medium,
       dueDate: null,
       estimatedTime: null,
-      assignedUserIds: selectedUser ? [selectedUser.userId] : []
+      assignedUserIds: selectedUser ? [selectedUser.userId] : [],
+      clientIds: clientIds,
+      projectIds: projectIds,
     };
-
+  
     try {
-      let response;
-
-      if (drawerType === MessageType.File && selectedFile) {
+      let response: Response;
+      if (taskDrawerType === MessageType.File && taskFile) {
         const formData = new FormData();
-        Object.keys(taskMessageData).forEach(key => {
-          const typedKey = key as keyof typeof taskMessageData;
-          const value = taskMessageData[typedKey];
-          
+        (Object.keys(taskMessageData) as (keyof typeof taskMessageData)[]).forEach(key => {
+          const value = taskMessageData[key];
           if (value !== null && value !== undefined) {
             if (Array.isArray(value)) {
               value.forEach((item, index) => {
-                formData.append(`${key}[${index}]`, item.toString());
+                formData.append(`${String(key)}[${index}]`, item.toString());
               });
             } else {
-              formData.append(key, value.toString());
+              formData.append(String(key), value.toString());
             }
           }
         });
-        formData.append('file', selectedFile);
-
-        response = await fetch('/api/Chat/messages/send-task-with-file', {
+        formData.append('file', taskFile);
+        response = await fetch(`${baseUrl}/api/Chat/messages/send-task-with-file`, {
           method: 'POST',
           body: formData
         });
-      } else if (drawerType === MessageType.Voice && audioBlob) {
+      } else if (taskDrawerType === MessageType.Voice && taskAudioBlob) {
         const formData = new FormData();
-        Object.keys(taskMessageData).forEach(key => {
-          const typedKey = key as keyof typeof taskMessageData;
-          const value = taskMessageData[typedKey];
-          
+        (Object.keys(taskMessageData) as (keyof typeof taskMessageData)[]).forEach(key => {
+          const value = taskMessageData[key];
           if (value !== null && value !== undefined) {
             if (Array.isArray(value)) {
               value.forEach((item, index) => {
-                formData.append(`${key}[${index}]`, item.toString());
+                formData.append(`${String(key)}[${index}]`, item.toString());
               });
             } else {
-              formData.append(key, value.toString());
+              formData.append(String(key), value.toString());
             }
           }
         });
-        formData.append('duration', recordingTime.toString());
-        formData.append('audioFile', audioBlob, 'voice-message.webm');
-
-        response = await fetch('/api/Chat/messages/send-task-with-voice', {
+        formData.append('duration', taskRecordingTime.toString());
+        formData.append('audioFile', taskAudioBlob, 'voice-message.webm');
+        response = await fetch(`${baseUrl}/api/Chat/messages/send-task-with-voice`, {
           method: 'POST',
           body: formData
         });
       } else {
-        response = await fetch('/api/Chat/messages/send-with-task', {
+        response = await fetch(`${baseUrl}/api/Chat/messages/send-with-task`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(taskMessageData)
         });
       }
-
+  
       if (response.ok) {
-        const result = await response.json();
-        console.log('Task message sent:', result);
-        setDrawerOpen(false);
-        setDrawerType(null);
-        setTaskContent('');
-        setSelectedFile(null);
-        setAudioBlob(null);
-        setRecordingTime(0);
-        setTaskStatus(TaskStatus.Backlog);
-        
-        alert('Task message sent successfully!');
+        const result: MessageResponse = await response.json();
+        setMessages(prev => [...prev, {
+          ...result,
+          assignedUserIds: result.assignedUserIds || []
+        } as Message]);
+        closeTaskDrawer();
       } else {
         throw new Error('Failed to send task message');
       }
@@ -666,21 +895,195 @@ const ChatApplication: React.FC = () => {
     }
   };
 
+  const startTaskRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      taskAudioStreamRef.current = stream;
+      
+      const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+      setTaskMediaRecorder(recorder);
+      isRecordingCanceled.current = false;
+      
+      const chunks: Blob[] = [];
+      
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunks.push(e.data);
+      };
+      
+      recorder.onstop = () => {
+        if (!isRecordingCanceled.current) {
+          const blob = new Blob(chunks, { type: 'audio/webm' });
+          setTaskAudioBlob(blob);
+          setTaskContent(`Voice message: ${formatTime(taskRecordingTime)}`);
+        }
+        
+        stream.getTracks().forEach(track => track.stop());
+        taskAudioStreamRef.current = null;
+      };
+      
+      recorder.start(100);
+      setTaskRecording(true);
+      setTaskRecordingTime(0);
+      
+      taskRecordingIntervalRef.current = setInterval(() => {
+        setTaskRecordingTime(prev => {
+          if (prev >= 59) {
+            stopTaskRecording();
+            return 60;
+          }
+          return prev + 1;
+        });
+      }, 1000);
+      
+    } catch (error) {
+      console.error('Error starting recording:', error);
+      alert('Could not access microphone.');
+    }
+  };
+
+  const stopTaskRecording = () => {
+    if (taskMediaRecorder && taskMediaRecorder.state === 'recording') {
+      taskMediaRecorder.stop();
+    }
+    setTaskRecording(false);
+    if (taskRecordingIntervalRef.current) {
+      clearInterval(taskRecordingIntervalRef.current);
+    }
+  };
+
+  const cancelTaskRecording = () => {
+    isRecordingCanceled.current = true;
+    if (taskMediaRecorder) {
+      taskMediaRecorder.stop();
+    }
+    if (taskAudioStreamRef.current) {
+      taskAudioStreamRef.current.getTracks().forEach(track => track.stop());
+      taskAudioStreamRef.current = null;
+    }
+    if (taskRecordingIntervalRef.current) clearInterval(taskRecordingIntervalRef.current);
+    setTaskRecording(false);
+    setTaskRecordingTime(0);
+    setTaskAudioBlob(null);
+    setTaskContent('');
+  };
+
+  const getEnumString = (enumValue : any) => {
+
+const formatTime = (seconds: number) => {
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+};
+
+const handleDropdownSelect = (type: MessageType) => {
+  setDrawerType(type);
+  setDrawerOpen(true);
+  setShowDropdown(false);
+  setTaskContent('');
+  setSelectedFile(null);
+  setAudioBlob(null);
+  setTaskStatus(TaskStatus.Backlog);
+};
+
+const handleTaskDropdownSelect = (type: MessageType) => {
+    setDrawerType(type);
+    setDrawerOpen(true);
+    setShowTaskDropdown(false);
+    setTaskContent('');
+    setTaskFile(null);
+    setTaskAudioBlob(null);
+    setTaskStatus(TaskStatus.Backlog);
+  };
+
+  const handleTaskFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setTaskFile(file);
+      setTaskContent(`File: ${file.name}`);
+    }
+  };
+
+  const startTaskRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      taskAudioStreamRef.current = stream;
+
+      const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+      setTaskMediaRecorder(recorder);
+
+      const chunks: Blob[] = [];
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          chunks.push(event.data);
+        }
+      };
+
+      recorder.onstop = () => {
+        const audioBlob = new Blob(chunks, { type: 'audio/webm' });
+        setTaskAudioBlob(audioBlob);
+      };
+
+      recorder.start();
+    } catch (error) {
+      console.error('Error starting task recording:', error);
+      alert('Failed to start recording. Please check your microphone permissions.');
+    }
+  }
+  };
+
+  const handleDownloadExcel = async (discussionId: number, discussionTitle: string) => {
+    try {
+      const response = await fetch(`${baseUrl}/api/Chat/discussions/${discussionId}/tasks/export-excel`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+  
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${discussionTitle}_Tasks_${new Date().toISOString().split('T')[0]}.xlsx`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+      } else {
+        throw new Error('Failed to download Excel file');
+      }
+    } catch (error) {
+      console.error('Error downloading Excel file:', error);
+      alert('Failed to download Excel file');
+    }
+  };
+
+  const closeTaskDrawer = () => {
+    if (taskRecording) {
+      cancelTaskRecording();
+    }
+    setTaskDrawerOpen(false);
+    setTaskDrawerType(null);
+    setTaskContent('');
+    setTaskFile(null);
+    setTaskAudioBlob(null);
+    setTaskRecordingTime(0);
+    setTaskStatus(TaskStatus.Backlog);
+  };
+
   const closeDrawer = () => {
     if (isRecording) {
       cancelRecording();
     }
     setDrawerOpen(false);
-    setDrawerType(null);
+    setDrawerType(MessageType.Text);
     setTaskContent('');
     setSelectedFile(null);
     setAudioBlob(null);
     setRecordingTime(0);
     setTaskStatus(TaskStatus.Backlog);
-  };
-
-  const getStatusOption = (status : string) => {
-    return statusOptions.find(option => option.value === status) || statusOptions[0];
   };
 
   return (
@@ -759,13 +1162,16 @@ const ChatApplication: React.FC = () => {
             <div className="space-y-3">
               {discussions.map((discussion) => (
                 <div
-                  key={discussion.id}
+                key={discussion.id}
+                className={`p-4 rounded-xl cursor-pointer border transition-all duration-200 hover:shadow-md flex justify-between items-center ${
+                  selectedDiscussion?.id === discussion.id
+                    ? "bg-gradient-to-r from-blue-100 to-purple-100 border-blue-300 shadow-md"
+                    : "bg-white/80 hover:bg-white/90 border-slate-200 hover:border-slate-300"
+                }`}
+              >
+                <div 
+                  className="flex-1"
                   onClick={() => handleDiscussionSelect(discussion)}
-                  className={`p-4 rounded-xl cursor-pointer border transition-all duration-200 hover:shadow-md ${
-                    selectedDiscussion?.id === discussion.id
-                      ? "bg-gradient-to-r from-blue-100 to-purple-100 border-blue-300 shadow-md"
-                      : "bg-white/80 hover:bg-white/90 border-slate-200 hover:border-slate-300"
-                  }`}
                 >
                   <div className="font-semibold text-slate-800 mb-1">
                     {discussion.title}
@@ -777,6 +1183,18 @@ const ChatApplication: React.FC = () => {
                     {formatDate(discussion.createdAt)}
                   </div>
                 </div>
+                
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDownloadExcel(discussion.id, discussion.title);
+                  }}
+                  className="ml-4 p-2 rounded-lg bg-green-500 hover:bg-green-600 text-white transition-colors duration-200 flex items-center justify-center"
+                  title="Download Tasks Excel"
+                >
+                  <DownloadIcon size={16} />
+                </button>
+              </div>
               ))}
             </div>
           ) : (
@@ -862,6 +1280,47 @@ const ChatApplication: React.FC = () => {
                         <X size={14} />
                       </button>
                     </div>
+                  </div>
+                ) : message.messageType === MessageType.Task ? (
+                  <div className="w-full max-w-2xl mx-auto">
+                    <TaskMessage
+                      task={{
+                        id: message.id,
+                        title: message.taskTitle || message.content || 'Untitled Task',
+                        description: message.content,
+                        status: (message.taskStatus as TaskStatus) || TaskStatus.Backlog,
+                        priority: (message.taskPriority as TaskPriority) || TaskPriority.Medium,
+                        dueDate: message.dueDate ? new Date(message.dueDate).toISOString() : undefined,
+                        assignedTo: message.senderName,
+                        duration: message.duration,
+                        taskStatus: (message.taskStatus as TaskStatus) || TaskStatus.Backlog,
+                        taskPriority: (message.taskPriority as TaskPriority) || TaskPriority.Medium
+                      }}
+                      onStatusChange={async (newStatus) => {
+                        if (!currentUser) return;
+                        try {
+                          const response = await fetch(`${baseUrl}/api/Chat/messages/${message.id}/status`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ 
+                              status: newStatus,
+                              updatedByUserId: currentUser.userId
+                            })
+                          });
+                          
+                          if (response.ok) {
+                            const updatedMessage = await response.json();
+                            setMessages(prev => prev.map(msg => 
+                              msg.id === message.id ? { ...msg, ...updatedMessage } : msg
+                            ));
+                          }
+                        } catch (error) {
+                          console.error('Error updating task status:', error);
+                        }
+                      }}
+                      onPlayVoice={message.duration ? () => playVoiceMessage(message) : undefined}
+                      isPlaying={playingVoiceId === message.id}
+                    />
                   </div>
                 ) : (
                   <>
@@ -1148,7 +1607,7 @@ const ChatApplication: React.FC = () => {
         </div>
       )}
 
-      {drawerOpen && (
+    {drawerOpen && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
           <div className="w-full bg-white rounded-t-xl max-h-[80vh] overflow-hidden">
             <div className="flex items-center justify-between p-4 border-b border-slate-200">
@@ -1196,12 +1655,97 @@ const ChatApplication: React.FC = () => {
                 </div>
               </div>
 
-              <div className="bg-slate-50 rounded-lg p-3">
+              <div className="bg-slate-50 rounded-lg p-3 space-y-3">
+              <div className="flex items-center justify-between">
                 <div className="text-sm text-slate-600">Assigned to:</div>
-                <div className="font-medium text-slate-900">
-                  {selectedUser?.firstName + ' ' + selectedUser?.lastName || 'No assignee selected'}
+                <select
+                  value={selectedUser?.userId || ''}
+                  onChange={(e) => {
+                    const userId = parseInt(e.target.value);
+                    const user = users.find(u => u.userId === userId);
+                    setSelectedUser(user || null);
+                  }}
+                  className="text-sm border border-slate-300 rounded px-2 py-1 bg-white min-w-[150px]"
+                >
+                  <option value="">No assignee</option>
+                  {users.map(user => (
+                    <option key={user.userId} value={user.userId}>
+                      {user.kullaniciAdi}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              
+              <div>
+                <div className="text-sm text-slate-600 mb-2">Clients:</div>
+                <div className="space-y-2">
+                  {selectedClients.map(client => (
+                    <div key={client.id} className="flex items-center justify-between bg-white px-2 py-1 rounded border">
+                      <span className="text-sm">{client.first_name}</span>
+                      <button
+                        onClick={() => setSelectedClients(prev => prev.filter(c => c.id !== client.id))}
+                        className="text-red-500 hover:text-red-700"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  ))}
+                  <select
+                    value=""
+                    onChange={(e) => {
+                      const clientId = parseInt(e.target.value);
+                      const client = clients.find(c => c.id === clientId);
+                      if (client && !selectedClients.find(c => c.id === clientId)) {
+                        setSelectedClients(prev => [...prev, client]);
+                      }
+                    }}
+                    className="w-full text-sm border border-slate-300 rounded px-2 py-1 bg-white"
+                  >
+                    <option value="">Add client...</option>
+                    {clients.filter(client => !selectedClients.find(c => c.id === client.id)).map(client => (
+                      <option key={client.id} value={client.id}>
+                        {client.first_name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
+              
+              <div>
+                <div className="text-sm text-slate-600 mb-2">Projects:</div>
+                <div className="space-y-2">
+                  {selectedProjects.map(project => (
+                    <div key={project.id} className="flex items-center justify-between bg-white px-2 py-1 rounded border">
+                      <span className="text-sm">{project.title}</span>
+                      <button
+                        onClick={() => setSelectedProjects(prev => prev.filter(p => p.id !== project.id))}
+                        className="text-red-500 hover:text-red-700"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  ))}
+                  <select
+                    value=""
+                    onChange={(e) => {
+                      const projectId = parseInt(e.target.value);
+                      const project = projects.find(p => p.id === projectId);
+                      if (project && !selectedProjects.find(p => p.id === projectId)) {
+                        setSelectedProjects(prev => [...prev, project]);
+                      }
+                    }}
+                    className="w-full text-sm border border-slate-300 rounded px-2 py-1 bg-white"
+                  >
+                    <option value="">Add project...</option>
+                    {projects.filter(project => !selectedProjects.find(p => p.id === project.id)).map(project => (
+                      <option key={project.id} value={project.id}>
+                        {project.title}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
 
               {drawerType === MessageType.Text && (
                 <div>
@@ -1227,10 +1771,10 @@ const ChatApplication: React.FC = () => {
                     onClick={() => fileInputRef.current?.click()}
                     className="border-2 border-dashed border-slate-300 rounded-lg p-6 text-center cursor-pointer hover:border-slate-400 transition"
                   >
-                    {selectedFile ? (
+                    {taskFile ? (
                       <div className="flex items-center justify-center space-x-2">
                         <FileText size={20} className="text-green-600" />
-                        <span className="font-medium">{selectedFile.name}</span>
+                        <span className="font-medium">{taskFile.name}</span>
                       </div>
                     ) : (
                       <div>
@@ -1242,7 +1786,7 @@ const ChatApplication: React.FC = () => {
                   <input
                     type="file"
                     ref={fileInputRef}
-                    onChange={handleFileChange}
+                    onChange={handleTaskFileChange}
                     className="hidden"
                   />
                 </div>
@@ -1254,26 +1798,26 @@ const ChatApplication: React.FC = () => {
                     Voice Recording
                   </label>
                   <div className="space-y-4">
-                    {!audioBlob ? (
+                    {!taskAudioBlob ? (
                       <div className="text-center">
-                        {isRecording ? (
+                        {taskRecording ? (
                           <div className="bg-red-50 border border-red-200 rounded-lg p-4">
                             <div className="flex items-center justify-center space-x-3 mb-3">
                               <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
                               <span className="text-red-600 font-medium">
-                                Recording: {formatTime(recordingTime)}
+                                Recording: {formatTime(taskRecordingTime)}
                               </span>
                             </div>
                             <div className="flex justify-center space-x-2">
                               <button
-                                onClick={stopRecording}
+                                onClick={stopTaskRecording}
                                 className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition flex items-center space-x-2"
                               >
                                 <Square size={16} />
                                 <span>Stop</span>
                               </button>
                               <button
-                                onClick={cancelRecording}
+                                onClick={cancelTaskRecording}
                                 className="px-4 py-2 bg-slate-500 text-white rounded-lg hover:bg-slate-600 transition"
                               >
                                 Cancel
@@ -1282,7 +1826,7 @@ const ChatApplication: React.FC = () => {
                           </div>
                         ) : (
                           <button
-                            onClick={startRecording}
+                            onClick={startTaskRecording}
                             className="px-6 py-3 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition flex items-center space-x-2 mx-auto"
                           >
                             <Mic size={20} />
@@ -1294,11 +1838,11 @@ const ChatApplication: React.FC = () => {
                       <div className="bg-green-50 border border-green-200 rounded-lg p-4">
                         <div className="flex items-center justify-center space-x-3">
                           <Volume2 size={20} className="text-green-600" />
-                          <span className="font-medium">Recording ready: {formatTime(recordingTime)}</span>
+                          <span className="font-medium">Recording ready: {formatTime(taskRecordingTime)}</span>
                           <button
                             onClick={() => {
-                              setAudioBlob(null);
-                              setRecordingTime(0);
+                              setTaskAudioBlob(null);
+                              setTaskRecordingTime(0);
                               setTaskContent('');
                             }}
                             className="text-red-500 hover:text-red-700"
@@ -1312,7 +1856,6 @@ const ChatApplication: React.FC = () => {
                 </div>
               )}
             </div>
-
             <div className="border-t border-slate-200 p-4">
               <div className="flex justify-between">
                 <button
@@ -1322,8 +1865,8 @@ const ChatApplication: React.FC = () => {
                   Cancel
                 </button>
                 <button
-                  onClick={handleSendTask}
-                  disabled={!taskContent.trim() && !selectedFile && !audioBlob}
+                  onClick={() => handleSendTask(taskContent, taskFile, taskAudioBlob, taskRecordingTime, drawerType, taskStatus, selectedDiscussion, currentUser, selectedUser, setMessages, closeDrawer, baseUrl, selectedClients.map(c => c.id), selectedProjects.map(p => p.id),)}
+                  disabled={!taskContent.trim() && !taskFile && !taskAudioBlob}
                   className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center space-x-2"
                 >
                   <Send size={16} />
