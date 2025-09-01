@@ -1,5 +1,5 @@
 import { useAtomValue } from "jotai";
-import { AlertCircle, ArrowLeft, Check, CheckCircle, Clock, DownloadIcon, Edit3, FileIcon, FileText, MessageSquare, Mic, Paperclip, Pause, Play, Plus, PlusIcon, Send, Square, Trash2, Users, Volume2, X, XCircle } from "lucide-react";
+import { AlertCircle, ArrowLeft, Check, CheckCircle, Clock, DownloadIcon, Edit3, FileIcon, FileText, MessageSquare, Mic, MoreVertical, Paperclip, Pause, Play, Plus, PlusIcon, Search, Send, Square, Trash2, Users, Volume2, X, XCircle } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { formatFileSize, MessageType, type SendMessageRequest, type User } from "~/help";
 import type { Client, CreateDiscussionRequest, Project } from "~/help";
@@ -8,6 +8,8 @@ import type { Message } from "~/help";
 import { userAtom } from "~/utils/userAtom";
 import { TaskMessage } from "~/components/TaskMessage";
 import { TaskStatus, TaskPriority } from '~/types/task';
+import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 interface MessageResponse {
   id: number;
@@ -31,6 +33,16 @@ interface MessageResponse {
   duration?: number;
   createdAt: Date;
   timestamp: string;
+}
+
+interface UploadResult {
+  success: boolean;
+  url?: string;
+  fileName?: string;
+  originalName?: string;
+  size?: number;
+  type?: string;
+  error?: string;
 }
 
 const ChatApplication: React.FC = () => {
@@ -74,6 +86,7 @@ const ChatApplication: React.FC = () => {
   const [selectedClients, setSelectedClients] = useState<Client[]>([]);
   const [selectedProjects, setSelectedProjects] = useState<Project[]>([]);
   const [sending, setSending] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   const [taskData, setTaskData] = useState({
     title: '',
     description: '',
@@ -98,6 +111,28 @@ const ChatApplication: React.FC = () => {
   const taskRecordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const [taskMediaRecorder, setTaskMediaRecorder] = useState<MediaRecorder | null>(null);
   const isRecordingCanceled = useRef(false);
+
+  const IDRIVE_E2_CONFIG = {
+    region: 'us-east-1',
+    endpoint: 'https://storageendpoint.idrivee2.com',
+    credentials: {
+      accessKeyId: process.env.REACT_APP_IDRIVE_ACCESS_KEY || 'YOUR_ACCESS_KEY_ID',
+      secretAccessKey: process.env.REACT_APP_IDRIVE_SECRET_KEY || 'YOUR_SECRET_ACCESS_KEY'
+    },
+    forcePathStyle: true
+  };
+
+  const s3Client = new S3Client(IDRIVE_E2_CONFIG);
+
+  const BUCKET_NAME = 'your-chat-app-bucket';
+
+  const generateFileName = (originalName: string, type: string = 'file'): string => {
+    const timestamp = Date.now();
+    const randomString = Math.random().toString(36).substring(2, 15);
+    const extension = originalName.split('.').pop();
+    return `${type}/${timestamp}-${randomString}.${extension}`;
+  };
+
 
   const baseUrl = "http://localhost:5178";
 
@@ -226,44 +261,97 @@ const ChatApplication: React.FC = () => {
     }
   };
 
-  const handleFileUpload = async (file: File) => {
+  const generatePreSignedUrl = async (fileName: string, expiresIn: number = 3600): Promise<string> => {
+    try {
+      const command = new GetObjectCommand({
+        Bucket: BUCKET_NAME,
+        Key: fileName,
+      });
+  
+      const signedUrl = await getSignedUrl(s3Client, command, { expiresIn });
+      return signedUrl;
+    } catch (error) {
+      console.error('Error generating pre-signed URL:', error);
+      throw error;
+    }
+  };
+
+  const uploadToIDriveE2 = async (file: File, type: string = 'file'): Promise<UploadResult> => {
+    try {
+      const fileName = generateFileName(file.name, type);
+      
+      const uploadParams = {
+        Bucket: BUCKET_NAME,
+        Key: fileName,
+        Body: file,
+        ContentType: file.type,
+        ACL: 'public-read' as const
+      };
+  
+      const command = new PutObjectCommand(uploadParams);
+      await s3Client.send(command);
+  
+      const publicUrl = `${IDRIVE_E2_CONFIG.endpoint}/${BUCKET_NAME}/${fileName}`;
+      return {
+        success: true,
+        url: publicUrl,
+        fileName: fileName,
+        originalName: file.name,
+        size: file.size,
+        type: file.type
+      };
+    } catch (error: any) {
+      console.error('Error uploading to IDrive E2:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  };
+
+  const handleFileUpload = async (file: File): Promise<void> => {
     if (!selectedDiscussion || !currentUser) return;
     setUploading(true);
-    
-    console.log('Uploading file:', file.name, 'Size:', file.size, 'Type:', file.type);
-    
-    const formData = new FormData();
-    formData.append('discussionId', selectedDiscussion.id.toString());
-    formData.append('senderId', currentUser.userId.toString());
-    formData.append('receiverId', (selectedUser?.userId || 0).toString());
-    formData.append('content', `File: ${file.name}`);
-    formData.append('messageType', MessageType.Voice.toString());
-    formData.append('file', file);
- 
+  
     try {
-        const response = await fetch(`${baseUrl}/api/Chat/messages/send-with-file`, {
-            method: 'POST',
-            body: formData
-        });
-       
-        if (!response.ok) {
-            const error = await response.text();
-            throw new Error(error || 'File upload failed');
-        }
-       
+      const uploadResult = await uploadToIDriveE2(file, 'files');
+      
+      if (!uploadResult.success) {
+        throw new Error(uploadResult.error);
+      }
+  
+      const request: SendMessageRequest = {
+        discussionId: selectedDiscussion.id,
+        senderId: currentUser.userId,
+        receiverId: selectedUser?.userId || 0,
+        content: `File: ${file.name}`,
+        messageType: MessageType.File,
+        fileName: file.name,
+        fileSize: file.size,
+        mimeType: file.type,
+        fileUrl: uploadResult.url || ''
+      };
+  
+      const response = await fetch(`${baseUrl}/api/Chat/messages/send-with-file`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(request)
+      });
+  
+      if (response.ok) {
         const message = await response.json();
-        console.log('File upload response:', message);
-       
         setMessages(prev => [...prev, message]);
-       
+        
         if (fileInputRef.current) fileInputRef.current.value = '';
         setSelectedFile(null);
-       
-      } catch (error) {
-          console.error('Error uploading file:', error);
-      } finally {
-          setUploading(false);
       }
+    } catch (error) {
+      console.error('Error uploading file:', error);
+    } finally {
+      setUploading(false);
+    }
   };
 
   const handleTaskSend = async () => {
@@ -403,7 +491,11 @@ const ChatApplication: React.FC = () => {
       senderId: currentUser.userId,
       receiverId: selectedUser?.userId || 0,
       content: newMessage,
-      messageType: MessageType.Text
+      messageType: MessageType.Text,
+      fileName: "",
+      fileSize: 0,
+      mimeType: "",
+      fileUrl: ""
     };
   
     try {
@@ -480,6 +572,7 @@ const ChatApplication: React.FC = () => {
 
   const startRecording = async () => {
     try {
+      setIsRecording(true);
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       audioStreamRef.current = stream;
       
@@ -523,6 +616,7 @@ const ChatApplication: React.FC = () => {
   };
 
   const stopRecording = () => {
+    setIsRecording(false);
     if (mediaRecorder && isRecording) {
       mediaRecorder.stop();
       setIsRecording(false);
@@ -541,58 +635,50 @@ const ChatApplication: React.FC = () => {
     setRecordingTime(0);
   };
 
-  const sendVoiceMessage = async () => {
+  const sendVoiceMessage = async (): Promise<void> => {
     if (!audioBlob || !selectedDiscussion || !currentUser) return;
-   
-    const formData = new FormData();
-    formData.append('discussionId', selectedDiscussion.id.toString());
-    formData.append('senderId', currentUser.userId.toString());
-    formData.append('receiverId', (selectedUser?.userId ?? '').toString());
-    formData.append('content', 'Voice message');
-    formData.append('messageType', '3');
-    formData.append('duration', recordingTime.toString());
-    formData.append('voiceFile', audioBlob, 'voice_message.webm');
-   
+    setUploading(true);
+  
     try {
-      setUploading(true);
-      console.log('Sending voice message with duration:', recordingTime);
-     
+      const voiceFile = new File([audioBlob], `voice-${Date.now()}.webm`, {
+        type: 'audio/webm'
+      });
+  
+      const uploadResult = await uploadToIDriveE2(voiceFile, 'voice');
+      
+      if (!uploadResult.success) {
+        throw new Error(uploadResult.error);
+      }
+  
+      const request: SendMessageRequest = {
+        discussionId: selectedDiscussion.id,
+        senderId: currentUser.userId,
+        receiverId: selectedUser?.userId || 0,
+        content: `Voice message (${formatTime(recordingTime)})`,
+        messageType: MessageType.Voice,
+        fileUrl: uploadResult.url || '',
+        fileName: voiceFile.name,
+        fileSize: voiceFile.size,
+        mimeType: voiceFile.type
+      };
+  
       const response = await fetch(`${baseUrl}/api/Chat/messages/send-with-voice`, {
         method: 'POST',
-        body: formData,
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(request)
       });
-     
-      if (!response.ok) {
-        const error = await response.text();
-        throw new Error(`Failed to send voice message: ${error}`);
+  
+      if (response.ok) {
+        const message = await response.json();
+        setMessages(prev => [...prev, message]);
+        
+        setAudioBlob(null);
+        setRecordingTime(0);
       }
-     
-      const result = await response.json();
-      console.log('Voice message sent successfully:', result);
-     
-      const newVoiceMessage: Message = {
-        id: result.id,
-        discussionId: selectedDiscussion?.id,
-        senderId: result.senderId,
-        senderName: currentUser.fullName,
-        content: result.content,
-        messageType: result.messageType,
-        isEdited: false,
-        timestamp: new Date(),
-        createdAt: new Date(result.createdAt),
-        fileReference: result.fileReference,
-        duration: result.duration || recordingTime,
-        receiverId: selectedUser?.userId,
-        assignedUserIds : []
-      };
-     
-      setMessages(prev => [...prev, newVoiceMessage]);
-      setAudioBlob(null);
-      setRecordingTime(0);
-     
     } catch (error) {
-      console.error('Error sending voice message:', error);
-      alert(error instanceof Error ? error.message : 'Failed to send voice message');
+      console.error('Error uploading voice message:', error);
     } finally {
       setUploading(false);
     }
@@ -638,11 +724,26 @@ const ChatApplication: React.FC = () => {
 
   const playVoiceMessage = async (message: Message) => {
     if (playingVoiceId === message.id) {
-      setPlayingVoiceId(null);
+      pauseVoiceMessage(message);
       return;
     }
   
-    let audio: HTMLAudioElement | null = null;
+    if (audioRef.current && audioRef.current.src && playingVoiceId === null) {
+      try {
+        await audioRef.current.play();
+        setPlayingVoiceId(message.id);
+        return;
+      } catch (error) {
+        console.error('Error resuming audio:', error);
+      }
+    }
+  
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+      URL.revokeObjectURL(audioRef.current.src);
+      audioRef.current = null;
+    }
   
     try {
       let audioBlob: Blob | undefined;
@@ -683,9 +784,11 @@ const ChatApplication: React.FC = () => {
         console.log('Fetched blob size:', audioBlob.size, 'type:', mimeType);
       }
   
-      audio = new Audio();
+      const audio = new Audio();
       audioUrl = URL.createObjectURL(audioBlob);
       audio.src = audioUrl;
+      
+      audioRef.current = audio;
   
       console.log('Starting audio playback...');
       await audio.play();
@@ -695,20 +798,37 @@ const ChatApplication: React.FC = () => {
         console.log('Audio playback ended');
         setPlayingVoiceId(null);
         URL.revokeObjectURL(audioUrl);
+        audioRef.current = null;
       };
   
       audio.onerror = (error) => {
         console.error('Audio playback error:', error);
         setPlayingVoiceId(null);
         URL.revokeObjectURL(audioUrl);
+        audioRef.current = null;
         alert('Error playing voice message');
       };
     } catch (error) {
       console.error('Error in playVoiceMessage:', error);
       alert(error instanceof Error ? error.message : 'Failed to play voice message');
-      if (audio) {
-        audio.src = '';
-      }
+      audioRef.current = null;
+    }
+  };
+
+  const pauseVoiceMessage = (message: Message) => {
+    if (playingVoiceId === message.id && audioRef.current) {
+      audioRef.current.pause();
+      setPlayingVoiceId(null);
+    }
+  };
+  
+  const stopVoiceMessage = (message: Message) => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+      URL.revokeObjectURL(audioRef.current.src);
+      audioRef.current = null;
+      setPlayingVoiceId(null);
     }
   };
 
@@ -755,10 +875,6 @@ const ChatApplication: React.FC = () => {
       setCurrentView('users');
       setSelectedUser(null);
     }
-  };
-
-  const formatDate = (dateString: Date) => {
-    return new Date(dateString).toLocaleString('tr-TR');
   };
 
   const formatTime = (seconds : number) => {
@@ -967,70 +1083,25 @@ const ChatApplication: React.FC = () => {
     setTaskContent('');
   };
 
-  const getEnumString = (enumValue : any) => {
-
-const formatTime = (seconds: number) => {
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  return `${mins}:${secs.toString().padStart(2, '0')}`;
-};
-
-const handleDropdownSelect = (type: MessageType) => {
-  setDrawerType(type);
-  setDrawerOpen(true);
-  setShowDropdown(false);
-  setTaskContent('');
-  setSelectedFile(null);
-  setAudioBlob(null);
-  setTaskStatus(TaskStatus.Backlog);
-};
-
-const handleTaskDropdownSelect = (type: MessageType) => {
-    setDrawerType(type);
-    setDrawerOpen(true);
-    setShowTaskDropdown(false);
-    setTaskContent('');
-    setTaskFile(null);
-    setTaskAudioBlob(null);
-    setTaskStatus(TaskStatus.Backlog);
-  };
-
-  const handleTaskFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setTaskFile(file);
-      setTaskContent(`File: ${file.name}`);
-    }
-  };
-
-  const startTaskRecording = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      taskAudioStreamRef.current = stream;
-
-      const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
-      setTaskMediaRecorder(recorder);
-
-      const chunks: Blob[] = [];
-
-      recorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          chunks.push(event.data);
-        }
-      };
-
-      recorder.onstop = () => {
-        const audioBlob = new Blob(chunks, { type: 'audio/webm' });
-        setTaskAudioBlob(audioBlob);
-      };
-
-      recorder.start();
-    } catch (error) {
-      console.error('Error starting task recording:', error);
-      alert('Failed to start recording. Please check your microphone permissions.');
-    }
-  }
-  };
+  const VoiceMessage = ({ message }: { message: Message }) => (
+    <div className="flex items-center space-x-3 py-2">
+      <button
+        onClick={() => playVoiceMessage(message)}
+        className={`p-2 rounded-full transition ${
+          message.senderId === currentUser?.userId
+            ? 'bg-white/20 hover:bg-white/30 text-white'
+            : 'bg-blue-100 hover:bg-blue-200 text-blue-600'
+        }`}
+        disabled={!message.fileReference && !message.audioBlob}
+      >
+        {playingVoiceId === message.id ? <Pause size={16} /> : <Play size={16} />}
+      </button>
+      <div className="flex items-center space-x-2">
+        <Volume2 size={16} className="opacity-70" />
+        <span className="text-sm">{formatTime(message.duration || 0)}</span>
+      </div>
+    </div>
+  );
 
   const handleDownloadExcel = async (discussionId: number, discussionTitle: string) => {
     try {
@@ -1087,281 +1158,238 @@ const handleTaskDropdownSelect = (type: MessageType) => {
   };
 
   return (
-    <div className="flex h-screen bg-gradient-to-br from-slate-50 to-blue-50">
-      <div className={`
-        ${currentView === "users" ? "flex" : "hidden"}
-        lg:flex flex-col w-full lg:w-80 bg-white/90 backdrop-blur-sm border-r border-slate-200/60 shadow-lg
-      `}>
-        <div className="p-6 border-b border-slate-200/60 bg-gradient-to-r from-blue-600 to-purple-600">
-          <h2 className="text-xl font-bold text-white flex items-center">
-            <Users className="mr-3 text-blue-100" size={24} />
-            Contacts
-          </h2>
+    <div className="h-screen bg-gray-50 flex flex-col md:flex-row">
+      <div className="md:hidden bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between">
+        {currentView !== 'users' && (
+          <button onClick={goBack} className="p-2 -ml-2">
+            <ArrowLeft className="w-5 h-5 text-gray-600" />
+          </button>
+        )}
+        <h1 className="font-semibold text-gray-900">
+          {currentView === 'users' ? 'Contacts' :
+           currentView === 'discussions' ? selectedUser?.kullaniciAdi :
+           selectedDiscussion?.title}
+        </h1>
+        <button className="p-2 -mr-2">
+          <MoreVertical className="w-5 h-5 text-gray-600" />
+        </button>
+      </div>
+
+      <div className={`${currentView === 'users' ? 'flex' : 'hidden'} md:flex w-full md:w-80 bg-white flex-col border-r border-gray-200`}>
+        <div className="hidden md:block p-6 border-b border-gray-100">
+          <h2 className="text-xl font-bold text-gray-900 mb-1">Contacts</h2>
+          <p className="text-sm text-gray-500">{users.length} contacts available</p>
         </div>
+
+        <div className="p-4 border-b border-gray-100">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input 
+              type="text" 
+              placeholder="Search contacts..." 
+              className="w-full pl-10 pr-4 py-3 bg-gray-50 border-0 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+            />
+          </div>
+        </div>
+
         <div className="flex-1 overflow-y-auto">
           {users.map((user) => (
             <div
               key={user.userId}
               onClick={() => handleUserSelect(user)}
-              className={`p-4 cursor-pointer border-b border-slate-100 hover:bg-gradient-to-r hover:from-blue-50 hover:to-purple-50 transition-all duration-200 ${
-                selectedUser?.userId === user.userId
-                  ? "bg-gradient-to-r from-blue-100 to-purple-100 border-blue-200"
-                  : ""
-              }`}
+              className="p-4 border-b border-gray-50 hover:bg-gray-50 cursor-pointer transition-colors active:bg-gray-100"
             >
               <div className="flex items-center space-x-3">
-                <div className="w-12 h-12 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full flex items-center justify-center text-white font-semibold text-lg">
-                  {user.kullaniciAdi[0]}
+                <div className="relative">
+                  <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-semibold">
+                    {user.kullaniciAdi[0]}
+                  </div>
+                  {/* <div className="absolute -bottom-0.5 -right-0.5">
+                    <StatusIndicator status={user.status} />
+                  </div> */}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="font-semibold text-slate-800 truncate">
-                    {user.kullaniciAdi}
-                  </div>
-                  {user.email && (
-                    <div className="text-sm text-slate-500 truncate">{user.email}</div>
-                  )}
+                  <div className="font-medium text-gray-900 truncate">{user.kullaniciAdi}</div>
+                  <div className="text-sm text-gray-500 truncate">{user.email}</div>
+                  {/* <div className="text-xs text-gray-400 mt-0.5">{user.lastSeen}</div> */}
                 </div>
+                {/* {user.status === 'online' && (
+                  <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                )} */}
               </div>
             </div>
           ))}
         </div>
       </div>
 
-      <div className={`
-        ${currentView === "discussions" ? "flex" : "hidden"}
-        ${selectedUser ? "lg:flex" : "lg:hidden"}
-        flex-col w-full lg:w-96 bg-white/90 backdrop-blur-sm border-r border-slate-200/60
-      `}>
-        <div className="p-4 border-b border-slate-200/60 bg-gradient-to-r from-purple-600 to-pink-600 flex items-center justify-between">
-          <div className="flex items-center text-white">
-            <button
-              onClick={goBack}
-              className="mr-3 p-2 hover:bg-white/20 rounded-full transition lg:hidden"
-            >
-              <ArrowLeft size={20} />
-            </button>
-            <h2 className="text-lg font-bold">
-              {selectedUser?.kullaniciAdi || "Discussions"}
-            </h2>
-          </div>
-          <button
-            onClick={() => setShowCreateDiscussion(true)}
-            className="bg-white/20 text-white px-4 py-2 rounded-lg hover:bg-white/30 transition flex items-center backdrop-blur-sm"
-          >
-            <Plus className="mr-1" size={16} />
-            <span className="hidden md:inline">New</span>
-          </button>
-        </div>
-        <div className="flex-1 overflow-y-auto p-3">
-          {loading ? (
-            <div className="text-center py-8 text-slate-500">
-              <div className="animate-spin w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full mx-auto"></div>
-              <p className="mt-2">Loading...</p>
+      
+      <div className={`${currentView === 'discussions' ? 'flex' : 'hidden'} ${selectedUser ? 'md:flex' : 'md:hidden'} w-full md:w-80 bg-white flex-col border-r border-gray-200`}>
+        {/* Header */}
+        <div className="p-4 border-b border-gray-100">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="font-semibold text-gray-900">{selectedUser?.kullaniciAdi}</h3>
+              <p className="text-sm text-gray-500">Discussions</p>
             </div>
-          ) : discussions.length > 0 ? (
-            <div className="space-y-3">
-              {discussions.map((discussion) => (
-                <div
-                key={discussion.id}
-                className={`p-4 rounded-xl cursor-pointer border transition-all duration-200 hover:shadow-md flex justify-between items-center ${
-                  selectedDiscussion?.id === discussion.id
-                    ? "bg-gradient-to-r from-blue-100 to-purple-100 border-blue-300 shadow-md"
-                    : "bg-white/80 hover:bg-white/90 border-slate-200 hover:border-slate-300"
-                }`}
-              >
-                <div 
-                  className="flex-1"
-                  onClick={() => handleDiscussionSelect(discussion)}
-                >
-                  <div className="font-semibold text-slate-800 mb-1">
-                    {discussion.title}
-                  </div>
-                  <div className="text-sm text-slate-600 mb-2 line-clamp-2">
-                    {discussion.description}
-                  </div>
-                  <div className="text-xs text-slate-400">
-                    {formatDate(discussion.createdAt)}
-                  </div>
-                </div>
-                
-                <button
+            <button onClick={() => setShowCreateDiscussion(true)} className="p-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition">
+              <Plus className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-2">
+          {discussions.map((discussion) => (
+              <div
+              key={discussion.id}
+              onClick={() => handleDiscussionSelect(discussion)}
+              className={`flex items-center justify-between w-full p-4 rounded-xl mb-2 cursor-pointer transition-all ${
+                selectedDiscussion?.id === discussion.id
+                  ? 'bg-blue-50 border-2 border-blue-200'
+                  : 'hover:bg-gray-50 active:bg-gray-100'
+              }`}
+            >
+              <div>
+              <div className="font-medium text-gray-900 mb-1">{discussion.title}</div>
+              <div className="text-sm text-gray-500 mb-2 line-clamp-2">{discussion.description}</div>
+              <div className="text-xs text-gray-400">{discussion.createdAt.toLocaleString()}</div>
+              </div>
+              <button
                   onClick={(e) => {
                     e.stopPropagation();
                     handleDownloadExcel(discussion.id, discussion.title);
                   }}
-                  className="ml-4 p-2 rounded-lg bg-green-500 hover:bg-green-600 text-white transition-colors duration-200 flex items-center justify-center"
+                  className="ml-4 p-2 rounded-lg bg-green-500 hover:bg-green-600 text-white transition-colors duration-200 flex items-right justify-end"
                   title="Download Tasks Excel"
                 >
                   <DownloadIcon size={16} />
                 </button>
-              </div>
-              ))}
             </div>
-          ) : (
-            <div className="text-center py-12 text-slate-500">
-              <MessageSquare size={48} className="mx-auto mb-3 opacity-40" />
-              <p>No discussions yet</p>
-            </div>
-          )}
+          ))}
         </div>
       </div>
 
-      <div className={`
-        ${currentView === "chat" ? "flex" : "hidden"}
-        ${selectedDiscussion ? "lg:flex" : "lg:hidden"}
-        flex-col w-full lg:flex-1 bg-white/90 backdrop-blur-sm
-      `}>
-        <div className="border-b border-slate-200/60 p-4 bg-gradient-to-r from-pink-600 to-orange-500 flex items-center">
-          <button
-            onClick={goBack}
-            className="mr-3 p-2 hover:bg-white/20 rounded-full text-white transition lg:hidden"
-          >
-            <ArrowLeft size={20} />
-          </button>
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center text-white font-semibold">
-              {selectedUser?.kullaniciAdi?.[0]}
+      <div className={`${currentView === 'chat' ? 'flex' : 'hidden'} ${selectedDiscussion ? 'md:flex' : 'md:hidden'} flex-1 flex-col bg-gray-50`}>
+        <div className="bg-white border-b border-gray-200 p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <div className="relative">
+                <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-semibold">
+                  {selectedUser?.kullaniciAdi?.[0]}
+                </div>
+                {/* <div className="absolute -bottom-0.5 -right-0.5">
+                  <StatusIndicator status={selectedUser?.status || 'offline'} />
+                </div> */}
+              </div>
+              <div>
+                <h2 className="font-semibold text-gray-900">{selectedDiscussion?.title}</h2>
+                <div className="text-sm text-gray-500 flex items-center">
+                  <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
+                  {selectedUser?.kullaniciAdi}
+                </div>
+              </div>
             </div>
-            <div>
-              <h1 className="text-lg font-bold text-white">
-                {selectedDiscussion?.title}
-              </h1>
-              <p className="text-sm text-white/80">
-                Chat with {selectedUser?.kullaniciAdi}
-              </p>
+            <div className="flex space-x-2">
+              <button className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition">
+                <MoreVertical className="w-5 h-5" />
+              </button>
             </div>
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gradient-to-b from-slate-50/80 to-white/80">
+        <div className="flex-1 overflow-y-auto p-4 space-y-6">
           {messages.map((message) => (
             <div
-              key={message.id}
-              className={`flex ${
-                message.senderId === currentUser?.userId
-                  ? "justify-end"
-                  : "justify-start"
-              }`}
-            >
-              <div
-                className={`max-w-[85%] sm:max-w-[75%] px-4 py-3 rounded-2xl shadow-md backdrop-blur-sm ${
+                key={message.id}
+                className={`flex ${
                   message.senderId === currentUser?.userId
-                    ? "bg-gradient-to-r from-blue-500 to-purple-600 text-white"
-                    : "bg-white/90 border border-slate-200 text-slate-800"
+                    ? "justify-end"
+                    : "justify-start"
                 }`}
-              >
-                <div className="text-xs opacity-75 mb-2">
-                  {message.senderName} • {formatDate(message.createdAt || new Date())}
-                  {message.isEdited && " (edited)"}
-                </div>
-                
-                {editingMessageId === message.id ? (
-                  <div className="space-y-2">
-                    <textarea
-                      value={editingContent}
-                      onChange={(e) => setEditingContent(e.target.value)}
-                      className="w-full p-2 border rounded text-slate-800 text-sm"
-                      rows={2}
-                    />
-                    <div className="flex space-x-2">
-                      <button
-                        onClick={() => editMessage(message.id, editingContent)}
-                        className="p-1 bg-green-500 text-white rounded"
-                      >
-                        <Check size={14} />
-                      </button>
-                      <button
-                        onClick={() => {
-                          setEditingMessageId(null);
-                          setEditingContent("");
-                        }}
-                        className="p-1 bg-slate-400 text-white rounded"
-                      >
-                        <X size={14} />
-                      </button>
+              >        
+              <div className={`max-w-xs sm:max-w-sm lg:max-w-md`}>
+                {message.messageType === MessageType.Task ? (
+                  <TaskMessage 
+                  task={{
+                    id: message.id,
+                    title: message.taskTitle || 'Untitled Task',
+                    description: message.taskDescription || message.content,
+                    status: message.taskStatus || TaskStatus.Backlog,
+                    priority: message.taskPriority || TaskPriority.Medium,
+                    dueDate: message.dueDate ? (typeof message.dueDate === 'string' ? message.dueDate : message.dueDate.toISOString()) : undefined,
+                    assignedTo: message.senderName,
+                    duration: message.duration,
+                    taskStatus: message.taskStatus || TaskStatus.Backlog,
+                    taskPriority: message.taskPriority || TaskPriority.Medium
+                  }}
+                  onStatusChange={async (newStatus) => {
+                    if (!currentUser) return;
+                    try {
+                      const response = await fetch(`${baseUrl}/api/Task/${message.taskId}/status`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ 
+                          status: newStatus,
+                          updatedByUserId: currentUser.userId
+                        })
+                      });
+                      
+                      if (response.ok) {
+                        const updatedMessage = await response.json();
+                        setMessages(prev => prev.map(msg => 
+                          msg.id === message.id ? { ...msg, ...updatedMessage } : msg
+                        ));
+                      }
+                    } catch (error) {
+                      console.error('Error updating task status:', error);
+                    }
+                  }}
+                  onPlayVoice={message.duration ? () => console.log('Playing voice') : undefined}
+                  isPlaying={false}
+                />
+                ) : message.messageType === MessageType.Voice ? (
+                  <div className={`bg-blue-500 text-white rounded-2xl p-4`}>
+                    <VoiceMessage message={message} />
+                  </div>
+                ): message.messageType === MessageType.File ? (
+                  <div className={`p-3 rounded-lg border ${message.senderId === currentUser?.userId ? 'bg-blue-50 border-blue-200' : 'bg-white border-gray-200'} w-full`}>
+                  <div className="flex items-start">
+                    <div className="bg-blue-100 p-2 rounded-lg">
+                      <FileIcon className="text-blue-600" size={20} />
                     </div>
-                  </div>
-                ) : message.messageType === MessageType.Task ? (
-                  <div className="w-full max-w-2xl mx-auto">
-                    <TaskMessage
-                      task={{
-                        id: message.id,
-                        title: message.taskTitle || message.content || 'Untitled Task',
-                        description: message.content,
-                        status: (message.taskStatus as TaskStatus) || TaskStatus.Backlog,
-                        priority: (message.taskPriority as TaskPriority) || TaskPriority.Medium,
-                        dueDate: message.dueDate ? new Date(message.dueDate).toISOString() : undefined,
-                        assignedTo: message.senderName,
-                        duration: message.duration,
-                        taskStatus: (message.taskStatus as TaskStatus) || TaskStatus.Backlog,
-                        taskPriority: (message.taskPriority as TaskPriority) || TaskPriority.Medium
-                      }}
-                      onStatusChange={async (newStatus) => {
-                        if (!currentUser) return;
-                        try {
-                          const response = await fetch(`${baseUrl}/api/Chat/messages/${message.id}/status`, {
-                            method: 'PUT',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ 
-                              status: newStatus,
-                              updatedByUserId: currentUser.userId
-                            })
-                          });
-                          
-                          if (response.ok) {
-                            const updatedMessage = await response.json();
-                            setMessages(prev => prev.map(msg => 
-                              msg.id === message.id ? { ...msg, ...updatedMessage } : msg
-                            ));
-                          }
-                        } catch (error) {
-                          console.error('Error updating task status:', error);
-                        }
-                      }}
-                      onPlayVoice={message.duration ? () => playVoiceMessage(message) : undefined}
-                      isPlaying={playingVoiceId === message.id}
-                    />
-                  </div>
-                ) : (
-                  <>
-                   {message.messageType === MessageType.Voice ? (
-                    <div className="flex items-center space-x-3 py-2">
-                      <button
-                        onClick={() => playVoiceMessage(message)}
-                        className={`p-2 rounded-full transition ${
-                          message.senderId === currentUser?.userId
-                            ? 'bg-white/20 hover:bg-white/30 text-white'
-                            : 'bg-blue-100 hover:bg-blue-200 text-blue-600'
-                        }`}
-                        disabled={!message.fileReference && !message.audioBlob}
-                      >
-                        {playingVoiceId === message.id ? <Pause size={16} /> : <Play size={16} />}
-                      </button>
-                      <div className="flex items-center space-x-2">
-                        <Volume2 size={16} className="opacity-70" />
-                        <span className="text-sm">{formatTime(message.duration || 0)}</span>
-                      </div>
-                      {process.env.NODE_ENV === 'development' && (
-                        <span className="text-xs opacity-50">
-                          {message.fileReference ? '(Server)' : message.audioBlob ? '(Local)' : '(No Audio)'}
-                        </span>
+                    <div className="ml-3 flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">
+                        {message.fileName}
+                      </p>
+                      {message.fileSize && (
+                        <p className="text-xs text-gray-500">
+                          {formatFileSize(message.fileSize)}
+                          {message.mimeType && ` • ${message.mimeType.split('/')[1].toUpperCase()}`}
+                        </p>
+                      )}
+                      {message.fileReference && (
+                        <a
+                          href={`${baseUrl}${message.fileReference}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mt-2 inline-flex items-center text-sm text-blue-600 hover:text-blue-800"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <DownloadIcon className="w-4 h-4 mr-1" />
+                          Download
+                        </a>
                       )}
                     </div>
-                    ) : message.messageType === MessageType.File ? (
-                      <div className="inline-flex items-center">
-                        <FileIcon className="mr-2" size={16} />
-                        {message.fileName}
-                        {message.fileSize && (
-                          <span className="ml-2 text-sm opacity-75">
-                            ({formatFileSize(message.fileSize)})
-                          </span>
-                        )}
-                      </div>
-                    ) : (
-                      <p className="whitespace-pre-wrap">{message.content}</p>
-                    )}
-
-                  {message.senderId === currentUser?.userId && (message.messageType === MessageType.Text || message.messageType === MessageType.Voice) && (
+                  </div>
+                </div>
+                ) : (
+                  <div className={`rounded-2xl rounded-br-md p-4 shadow-sm ${message.senderId === currentUser?.userId ? 'bg-blue-500 text-white' : 'bg-white/90 border border-slate-200 text-slate-800'}`}>
+                    <p className="text-sm leading-relaxed">{message.content}</p>
+                  </div>
+                )}
+                <div className={`text-xs text-gray-400 mt-1`}>
+                  {message.createdAt?.toLocaleString()}
+                </div>
+                {message.senderId === currentUser?.userId && (message.messageType === MessageType.Text || message.messageType === MessageType.Voice) && (
                     <div className="flex space-x-2 mt-2 text-xs opacity-75">
                       <button
                         onClick={() => {
@@ -1380,51 +1408,86 @@ const handleTaskDropdownSelect = (type: MessageType) => {
                       </button>
                     </div>
                   )}
-                  </>
-                )}
               </div>
             </div>
           ))}
         </div>
 
-        <div className="border-t border-slate-200/60 p-4 bg-white/90 backdrop-blur-sm">
-          <div className="flex items-end space-x-2">
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="p-3 text-slate-500 hover:text-slate-700 rounded-full hover:bg-slate-100 transition"
-              disabled={uploading || isRecording}
-            >
-              <Paperclip size={20} />
-              <input
-                type="file"
-                ref={fileInputRef}
-                onChange={handleFileChange}
-                className="hidden"
-                disabled={uploading || isRecording}
-              />
-            </button>
-            
-            <button
-              onClick={isRecording ? stopRecording : startRecording}
-              className={`p-3 rounded-full transition-all duration-200 ${
-                isRecording 
-                  ? "bg-red-500 text-white animate-pulse" 
-                  : "text-slate-500 hover:text-slate-700 hover:bg-slate-100"
-              }`}
-              disabled={uploading}
-            >
-              {isRecording ? <Square size={20} /> : <Mic size={20} />}
-            </button>
+        {isRecording && (
+            <div className="mb-4 p-3 bg-red-50 rounded-xl border border-red-200">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
+                  <span className="text-red-700 font-medium text-sm">Recording</span>
+                  <span className="text-red-600 text-sm">
+                    {Math.floor(recordingTime / 60)}:{(recordingTime % 60).toString().padStart(2, '0')}
+                  </span>
+                </div>
+                <div className="flex space-x-2">
+                  <button
+                    onClick={() => setIsRecording(false)}
+                    className="p-1 text-red-500 hover:bg-red-100 rounded transition"
+                  >
+                    <Pause className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            </div>
+        )}
 
-            <button
-              onClick={() => setShowDropdown(!showDropdown)}
-              className="p-3 text-slate-500 hover:text-slate-700 rounded-full hover:bg-slate-100 transition"
-            >
-              <Plus size={20} />
-            </button>
+        {audioBlob && !isRecording && (
+            <div className="mb-4 p-3 rounded-xl bg-blue-50 border border-blue-200 p-4 shadow-lg backdrop-blur-sm">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <Volume2 className="text-blue-600" size={20} />
+                  <span className="text-blue-800 font-medium">
+                    Voice message ({formatTime(recordingTime)})
+                  </span>
+                </div>
+                <div className="flex space-x-2">
+                  <button
+                    onClick={sendVoiceMessage}
+                    disabled={uploading}
+                    className="px-3 py-1 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition text-sm disabled:opacity-50"
+                  >
+                    {uploading ? 'Sending...' : 'Send'}
+                  </button>
+                  <button
+                    onClick={() => setAudioBlob(null)}
+                    className="p-1 text-blue-500 hover:text-blue-700 transition"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              </div>
+            </div>
+        )}
 
-            {showDropdown && (
-              <div className="absolute bottom-full mb-2 left-0 bg-white rounded-xl shadow-lg border border-slate-200 py-2 min-w-[160px] z-50">
+        {selectedFile && (
+            <div className="mb-4 p-3 shadow-lg backdrop-blur-sm bg-slate-50 p-3 rounded-xl border border-slate-300 min-w-64 max-w-full">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2 overflow-hidden">
+                  <FileIcon className="text-blue-500 flex-shrink-0" size={20} />
+                  <span className="text-sm truncate">{selectedFile.name}</span>
+                </div>
+                <button
+                  onClick={() => {
+                    setSelectedFile(null);
+                      if (fileInputRef.current) fileInputRef.current.value = "";
+                    }}
+                    className="text-slate-500 hover:text-red-500 transition ml-2"
+                    >
+                    <X size={18} />
+                  </button>
+                </div>
+                {uploading && (
+                  <div className="text-xs text-slate-500 mt-2">Uploading...</div>
+                )}
+              </div>
+        )}
+
+        {showDropdown && (
+              <div className="mb-4 p-3 rounded-xl backdrop-blur-sm bg-white shadow-lg border border-slate-200 py-2 min-w-[160px] z-50">
                 {dropdownOptions.map((option) => (
                   <button
                     key={option.type}
@@ -1436,112 +1499,68 @@ const handleTaskDropdownSelect = (type: MessageType) => {
                   </button>
                 ))}
               </div>
-            )}
-            
-            <div className="flex-1 relative">
-              {isRecording && (
-                <div className="absolute bottom-16 left-0 right-0 bg-red-50 border border-red-200 rounded-xl p-4 shadow-lg backdrop-blur-sm">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-3">
-                      <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
-                      <span className="text-red-600 font-medium">
-                        Recording: {formatTime(recordingTime)}
-                      </span>
-                      <div className="text-sm text-red-500">
-                        ({50 - recordingTime}s remaining)
-                      </div>
-                    </div>
-                    <div className="flex space-x-2">
-                      <button
-                        onClick={cancelRecording}
-                        className="p-2 text-red-500 hover:text-red-700 transition"
-                      >
-                        <X size={16} />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-              
-              {audioBlob && !isRecording && (
-                <div className="absolute bottom-16 left-0 right-0 bg-blue-50 border border-blue-200 rounded-xl p-4 shadow-lg backdrop-blur-sm">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-3">
-                      <Volume2 className="text-blue-600" size={20} />
-                      <span className="text-blue-800 font-medium">
-                        Voice message ({formatTime(recordingTime)})
-                      </span>
-                    </div>
-                    <div className="flex space-x-2">
-                      <button
-                        onClick={sendVoiceMessage}
-                        disabled={uploading}
-                        className="px-3 py-1 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition text-sm"
-                      >
-                        Send
-                      </button>
-                      <button
-                        onClick={() => setAudioBlob(null)}
-                        className="p-1 text-blue-500 hover:text-blue-700 transition"
-                      >
-                        <X size={16} />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-              
-              {selectedFile && (
-                <div className="absolute bottom-16 left-0 bg-slate-50 p-3 rounded-xl shadow-md border border-slate-300 min-w-64 max-w-full backdrop-blur-sm">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-2 overflow-hidden">
-                      <FileIcon className="text-blue-500 flex-shrink-0" size={20} />
-                      <span className="text-sm truncate">{selectedFile.name}</span>
-                    </div>
-                    <button
-                      onClick={() => {
-                        setSelectedFile(null);
-                        if (fileInputRef.current) fileInputRef.current.value = "";
-                      }}
-                      className="text-slate-500 hover:text-red-500 transition ml-2"
-                    >
-                      <X size={18} />
-                    </button>
-                  </div>
-                  {uploading && (
-                    <div className="text-xs text-slate-500 mt-2">Uploading...</div>
-                  )}
-                </div>
-              )}
-              
-              <textarea
-                value={newMessage}
-                onChange={(e) => setNewMessage(e.target.value)}
-                placeholder={isRecording ? "Recording voice message..." : "Type your message..."}
-                className="w-full p-4 pr-12 border border-slate-300 rounded-2xl resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white/90 backdrop-blur-sm transition-all duration-200"
-                rows={1}
-                onKeyPress={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    sendMessage();
-                  }
-                }}
+          )}
+
+        <div className="bg-white border-t border-gray-200 p-4">
+            <div className="flex items-end space-x-3">
+            <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileChange}
+                className="hidden"
                 disabled={uploading || isRecording}
               />
-            </div>
-            
-            <button
-              onClick={sendMessage}
-              disabled={(!newMessage.trim() && !selectedFile) || uploading || isRecording}
-              className="bg-gradient-to-r from-blue-500 to-purple-600 text-white p-3 rounded-2xl hover:from-blue-600 hover:to-purple-700 disabled:from-slate-300 disabled:to-slate-400 disabled:cursor-not-allowed transition-all duration-200 shadow-lg"
+
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="p-3 text-slate-500 hover:text-slate-700 rounded-full hover:bg-slate-100 transition"
+                disabled={uploading || isRecording}
+              >
+                <Paperclip size={20} />
+              </button>
+              <button
+              onClick={() => setShowDropdown(!showDropdown)}
+              className="p-3 text-slate-500 hover:text-slate-700 rounded-full hover:bg-slate-100 transition"
             >
-              {uploading ? (
-                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-              ) : (
-                <Send size={18} />
-              )}
+              <Plus size={20} />
             </button>
-          </div>
+              <div className="flex-1 relative">
+                <textarea
+                  value={newMessage}
+                  onChange={(e) => setNewMessage(e.target.value)}
+                  placeholder="Type a message..."
+                  className="w-full p-3 pr-12 bg-gray-50 border-0 rounded-2xl resize-none focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:bg-white transition-all"
+                  rows={1}
+                  onKeyPress={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      sendMessage();
+                    }
+                  }}
+                  disabled={uploading || isRecording}
+                />
+                <button
+                  onClick={sendMessage}
+                  disabled={
+                    (!newMessage.trim() && !selectedFile && !audioBlob) || uploading || isRecording
+                  }
+                  className="absolute right-2 bottom-2 p-2 bg-blue-500 text-white rounded-xl hover:bg-blue-600 transition disabled:opacity-50"
+                >
+                  <Send className="w-4 h-4" />
+                </button>
+              </div>
+              <button
+                onClick={isRecording ? stopRecording : startRecording}
+                className={`p-3 rounded-full transition-all duration-200 ${
+                  isRecording
+                    ? "bg-red-500 text-white animate-pulse shadow-lg"
+                    : "bg-slate-100 text-slate-500 hover:text-slate-700 hover:bg-slate-200"
+                }`}
+                disabled={uploading}
+              >
+                {isRecording ? <Square size={20} /> : <Mic size={20} />}
+              </button>
+            </div>
         </div>
       </div>
 

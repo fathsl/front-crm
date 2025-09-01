@@ -1,4 +1,4 @@
-import { CheckCircle, Clock, AlertCircle, Play, Pause } from 'lucide-react';
+import { CheckCircle, Clock, AlertCircle, Play, Pause, FileText } from 'lucide-react';
 import { useState } from 'react';
 import { TaskStatus, TaskPriority } from '~/types/task';
 
@@ -28,6 +28,34 @@ export const TaskMessage = ({
 }: TaskMessageProps) => {
   const [isUpdating, setIsUpdating] = useState(false);
 
+  const mapNumericStatusToEnum = (numericStatus: number | string): TaskStatus => {
+    const statusMap: { [key: number]: TaskStatus } = {
+      0: TaskStatus.Backlog,
+      1: TaskStatus.ToDo,
+      2: TaskStatus.InProgress,
+      3: TaskStatus.InReview,
+      4: TaskStatus.Done,
+    };
+    
+    const numStatus = typeof numericStatus === 'string' ? parseInt(numericStatus) : numericStatus;
+    return statusMap[numStatus] || TaskStatus.Backlog;
+  };
+
+  const getCurrentStatus = (): TaskStatus => {
+    if (typeof task.status === 'number') {
+      return mapNumericStatusToEnum(task.status);
+    }
+    return task.status || TaskStatus.Backlog;
+  };
+
+  const currentStatus = getCurrentStatus();
+
+  const defaultStatus = {
+    icon: AlertCircle,
+    color: 'bg-gray-100 text-gray-800',
+    label: 'Unknown',
+  } as const;
+
   const statusConfig = {
     [TaskStatus.Backlog]: {
       icon: Clock,
@@ -56,6 +84,10 @@ export const TaskMessage = ({
     },
   } as const;
 
+  const getStatusConfig = (status?: TaskStatus) => {
+    return status ? statusConfig[status] || defaultStatus : defaultStatus;
+  };
+
   const priorityColors = {
     [TaskPriority.Low]: 'bg-green-100 text-green-800',
     [TaskPriority.Medium]: 'bg-yellow-100 text-yellow-800',
@@ -68,8 +100,8 @@ export const TaskMessage = ({
   }));
 
   const handleStatusClick = async (status: TaskStatus) => {
-    if (status === (task.taskStatus as TaskStatus) || isUpdating) return;
-    
+    if (status === currentStatus || isUpdating) return;
+   
     try {
       setIsUpdating(true);
       await onStatusChange(status);
@@ -79,66 +111,75 @@ export const TaskMessage = ({
   };
 
   return (
-    <div className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm">
-      <div className="flex justify-between items-start mb-2">
-        <h3 className="font-medium text-gray-900">{task.title}</h3>
+    <div className="bg-white border border-gray-200 rounded-2xl p-4 max-w-sm">
+      <div className="flex items-start justify-between mb-3">
         <div className="flex items-center space-x-2">
-          <span className={`text-xs px-2 py-1 rounded-full ${statusConfig[task.status].color}`}>
-            {statusConfig[task.status].label}
+          <FileText className="w-4 h-4 text-blue-500" />
+          <span className="font-semibold text-gray-900 text-sm">Task</span>
+        </div>
+        <div className="flex items-center space-x-2">
+          <span
+            className={`text-xs px-2 py-1 rounded-full ${
+              getStatusConfig(currentStatus).color
+            }`}
+          >
+            {getStatusConfig(currentStatus).label}
           </span>
-          <span className={`text-xs px-2 py-1 rounded-full ${priorityColors[task.priority]}`}>
+          <span
+            className={`text-xs px-2 py-1 rounded-full ${priorityColors[task.priority]}`}
+          >
             {task.priority}
           </span>
         </div>
       </div>
+      
+      <div className="mb-3">
+        <h3 className="font-medium text-gray-900 text-sm mb-1">{task.title}</h3>
+        {task.description && (
+          <p className="text-gray-600 text-xs">{task.description}</p>
+        )}
+      </div>
 
-      {task.description && (
-        <p className="text-sm text-gray-600 mb-3">{task.description}</p>
+    <div className="flex items-center justify-between text-xs text-gray-500 mt-3 pt-3 border-t border-gray-100">
+      {task.dueDate && (
+        <div className="flex items-center">
+          <Clock className="w-3.5 h-3.5 text-gray-400 mr-1" />
+          <span>{new Date(task.dueDate).toLocaleDateString()}</span>
+        </div>
       )}
 
-      <div className="flex items-center justify-between text-xs text-gray-500 mt-3 pt-3 border-t border-gray-100">
-        {task.dueDate && (
-          <div className="flex items-center">
-            <Clock className="w-3.5 h-3.5 text-gray-400 mr-1" />
-            <span>{new Date(task.dueDate).toLocaleDateString()}</span>
-          </div>
-        )}
-        
-        {task.duration && onPlayVoice && (
-          <button
-            onClick={onPlayVoice}
-            className="flex items-center text-blue-600 hover:text-blue-800"
-          >
-            {isPlaying ? (
-              <Pause className="w-3.5 h-3.5 mr-1" />
-            ) : (
-              <Play className="w-3.5 h-3.5 mr-1" />
-            )}
-            <span>{formatTime(task.duration)}</span>
-          </button>
-        )}
-      </div>
-
-      <div className="mt-3 pt-3 border-t border-gray-100">
-        <div className="flex flex-wrap gap-2">
-          {statusOptions.map(({ value, icon: Icon, color, label }) => (
-            <button
-              key={value}
-              onClick={() => handleStatusClick(value)}
-              disabled={isUpdating}
-              className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
-                task.status === value
-                  ? 'bg-gray-100 text-gray-800'
-                  : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'
-              }`}
-            >
-              <Icon className="w-3 h-3 mr-1" />
-              {label}
-            </button>
-          ))}
-        </div>
-      </div>
+      {task.duration && onPlayVoice && (
+        <button
+          onClick={onPlayVoice}
+          className="flex items-center text-blue-600 hover:text-blue-800"
+        >
+          {isPlaying ? (
+            <Pause className="w-3.5 h-3.5 mr-1" />
+          ) : (
+            <Play className="w-3.5 h-3.5 mr-1" />
+          )}
+          <span>{formatTime(task.duration)}</span>
+        </button>
+      )}
     </div>
+
+    <div className="flex flex-wrap gap-1 mb-3">
+        {statusOptions.map((option) => (
+          <button
+            key={option.value}
+            onClick={() => handleStatusClick(option.value)}
+            disabled={isUpdating || option.value === currentStatus}
+            className={`text-xs px-2 py-1 rounded-full transition-colors ${
+              option.value === currentStatus
+                ? option.color
+                : 'bg-gray-50 hover:bg-gray-100 text-gray-600'
+            } ${isUpdating ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+  </div>
   );
 };
 
