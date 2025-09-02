@@ -1,15 +1,13 @@
 import { useAtomValue } from "jotai";
-import { AlertCircle, ArrowLeft, Check, CheckCircle, Clock, DownloadIcon, Edit3, FileIcon, FileText, MessageSquare, Mic, MoreVertical, Paperclip, Pause, Play, Plus, PlusIcon, Search, Send, Square, Trash2, Users, Volume2, X, XCircle } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { AlertCircle, ArrowLeft, CheckCircle, Clock, DownloadIcon, Edit3, FileIcon, FileText, MessageSquare, Mic, MoreVertical, Paperclip, Pause, Play, Plus, Search, Send, Square, Trash2, Users, Volume2, X, XCircle } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react"; 
 import { formatFileSize, MessageType, type SendMessageRequest, type User } from "~/help";
 import type { Client, CreateDiscussionRequest, Project } from "~/help";
 import type { Discussion } from "~/help";
 import type { Message } from "~/help";
 import { userAtom } from "~/utils/userAtom";
 import { TaskMessage } from "~/components/TaskMessage";
-import { TaskStatus, TaskPriority } from '~/types/task';
-import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { TaskStatus, TaskPriority } from '~/types/task';      
 
 interface MessageResponse {
   id: number;
@@ -33,16 +31,6 @@ interface MessageResponse {
   duration?: number;
   createdAt: Date;
   timestamp: string;
-}
-
-interface UploadResult {
-  success: boolean;
-  url?: string;
-  fileName?: string;
-  originalName?: string;
-  size?: number;
-  type?: string;
-  error?: string;
 }
 
 const ChatApplication: React.FC = () => {
@@ -111,29 +99,6 @@ const ChatApplication: React.FC = () => {
   const taskRecordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const [taskMediaRecorder, setTaskMediaRecorder] = useState<MediaRecorder | null>(null);
   const isRecordingCanceled = useRef(false);
-
-  const IDRIVE_E2_CONFIG = {
-    region: 'us-east-1',
-    endpoint: 'https://storageendpoint.idrivee2.com',
-    credentials: {
-      accessKeyId: process.env.REACT_APP_IDRIVE_ACCESS_KEY || 'YOUR_ACCESS_KEY_ID',
-      secretAccessKey: process.env.REACT_APP_IDRIVE_SECRET_KEY || 'YOUR_SECRET_ACCESS_KEY'
-    },
-    forcePathStyle: true
-  };
-
-  const s3Client = new S3Client(IDRIVE_E2_CONFIG);
-
-  const BUCKET_NAME = 'your-chat-app-bucket';
-
-  const generateFileName = (originalName: string, type: string = 'file'): string => {
-    const timestamp = Date.now();
-    const randomString = Math.random().toString(36).substring(2, 15);
-    const extension = originalName.split('.').pop();
-    return `${type}/${timestamp}-${randomString}.${extension}`;
-  };
-
-
   const baseUrl = "http://localhost:5178";
 
   const fetchUsers = async () => {
@@ -261,97 +226,44 @@ const ChatApplication: React.FC = () => {
     }
   };
 
-  const generatePreSignedUrl = async (fileName: string, expiresIn: number = 3600): Promise<string> => {
-    try {
-      const command = new GetObjectCommand({
-        Bucket: BUCKET_NAME,
-        Key: fileName,
-      });
-  
-      const signedUrl = await getSignedUrl(s3Client, command, { expiresIn });
-      return signedUrl;
-    } catch (error) {
-      console.error('Error generating pre-signed URL:', error);
-      throw error;
-    }
-  };
-
-  const uploadToIDriveE2 = async (file: File, type: string = 'file'): Promise<UploadResult> => {
-    try {
-      const fileName = generateFileName(file.name, type);
-      
-      const uploadParams = {
-        Bucket: BUCKET_NAME,
-        Key: fileName,
-        Body: file,
-        ContentType: file.type,
-        ACL: 'public-read' as const
-      };
-  
-      const command = new PutObjectCommand(uploadParams);
-      await s3Client.send(command);
-  
-      const publicUrl = `${IDRIVE_E2_CONFIG.endpoint}/${BUCKET_NAME}/${fileName}`;
-      return {
-        success: true,
-        url: publicUrl,
-        fileName: fileName,
-        originalName: file.name,
-        size: file.size,
-        type: file.type
-      };
-    } catch (error: any) {
-      console.error('Error uploading to IDrive E2:', error);
-      return {
-        success: false,
-        error: error.message
-      };
-    }
-  };
-
-  const handleFileUpload = async (file: File): Promise<void> => {
+  const handleFileUpload = async (file: File) => {
     if (!selectedDiscussion || !currentUser) return;
     setUploading(true);
-  
+    
+    console.log('Uploading file:', file.name, 'Size:', file.size, 'Type:', file.type);
+    
+    const formData = new FormData();
+    formData.append('discussionId', selectedDiscussion.id.toString());
+    formData.append('senderId', currentUser.userId.toString());
+    formData.append('receiverId', (selectedUser?.userId || 0).toString());
+    formData.append('content', `File: ${file.name}`);
+    formData.append('messageType', MessageType.File.toString());
+    formData.append('file', file);
+ 
     try {
-      const uploadResult = await uploadToIDriveE2(file, 'files');
-      
-      if (!uploadResult.success) {
-        throw new Error(uploadResult.error);
-      }
-  
-      const request: SendMessageRequest = {
-        discussionId: selectedDiscussion.id,
-        senderId: currentUser.userId,
-        receiverId: selectedUser?.userId || 0,
-        content: `File: ${file.name}`,
-        messageType: MessageType.File,
-        fileName: file.name,
-        fileSize: file.size,
-        mimeType: file.type,
-        fileUrl: uploadResult.url || ''
-      };
-  
-      const response = await fetch(`${baseUrl}/api/Chat/messages/send-with-file`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(request)
-      });
-  
-      if (response.ok) {
+        const response = await fetch(`${baseUrl}/api/Chat/messages/send-with-file`, {
+            method: 'POST',
+            body: formData
+        });
+       
+        if (!response.ok) {
+            const error = await response.text();
+            throw new Error(error || 'File upload failed');
+        }
+       
         const message = await response.json();
+        console.log('File upload response:', message);
+       
         setMessages(prev => [...prev, message]);
-        
+       
         if (fileInputRef.current) fileInputRef.current.value = '';
         setSelectedFile(null);
+       
+      } catch (error) {
+          console.error('Error uploading file:', error);
+      } finally {
+          setUploading(false);
       }
-    } catch (error) {
-      console.error('Error uploading file:', error);
-    } finally {
-      setUploading(false);
-    }
   };
 
   const handleTaskSend = async () => {
@@ -491,11 +403,7 @@ const ChatApplication: React.FC = () => {
       senderId: currentUser.userId,
       receiverId: selectedUser?.userId || 0,
       content: newMessage,
-      messageType: MessageType.Text,
-      fileName: "",
-      fileSize: 0,
-      mimeType: "",
-      fileUrl: ""
+      messageType: MessageType.Text
     };
   
     try {
@@ -635,48 +543,55 @@ const ChatApplication: React.FC = () => {
     setRecordingTime(0);
   };
 
-  const sendVoiceMessage = async (): Promise<void> => {
+  const sendVoiceMessage = async () => {
     if (!audioBlob || !selectedDiscussion || !currentUser) return;
-    setUploading(true);
-  
+   
+    const formData = new FormData();
+    formData.append('discussionId', selectedDiscussion.id.toString());
+    formData.append('senderId', currentUser.userId.toString());
+    formData.append('receiverId', (selectedUser?.userId ?? '').toString());
+    formData.append('content', 'Voice message');
+    formData.append('messageType', '3');
+    formData.append('duration', recordingTime.toString());
+    formData.append('voiceFile', audioBlob, 'voice_message.webm');
+   
     try {
-      const voiceFile = new File([audioBlob], `voice-${Date.now()}.webm`, {
-        type: 'audio/webm'
-      });
-  
-      const uploadResult = await uploadToIDriveE2(voiceFile, 'voice');
-      
-      if (!uploadResult.success) {
-        throw new Error(uploadResult.error);
-      }
-  
-      const request: SendMessageRequest = {
-        discussionId: selectedDiscussion.id,
-        senderId: currentUser.userId,
-        receiverId: selectedUser?.userId || 0,
-        content: `Voice message (${formatTime(recordingTime)})`,
-        messageType: MessageType.Voice,
-        fileUrl: uploadResult.url || '',
-        fileName: voiceFile.name,
-        fileSize: voiceFile.size,
-        mimeType: voiceFile.type
-      };
-  
+      setUploading(true);
+      console.log('Sending voice message with duration:', recordingTime);
+     
       const response = await fetch(`${baseUrl}/api/Chat/messages/send-with-voice`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(request)
+        body: formData,
       });
-  
-      if (response.ok) {
-        const message = await response.json();
-        setMessages(prev => [...prev, message]);
-        
-        setAudioBlob(null);
-        setRecordingTime(0);
+     
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`Failed to send voice message: ${error}`);
       }
+     
+      const result = await response.json();
+      console.log('Voice message sent successfully:', result);
+     
+      const newVoiceMessage: Message = {
+        id: result.id,
+        discussionId: selectedDiscussion?.id,
+        senderId: result.senderId,
+        senderName: currentUser.fullName,
+        content: result.content,
+        messageType: result.messageType,
+        isEdited: false,
+        timestamp: new Date(),
+        createdAt: new Date(result.createdAt),
+        fileReference: result.fileReference,
+        duration: result.duration || recordingTime,
+        receiverId: selectedUser?.userId,
+        assignedUserIds : []
+      };
+     
+      setMessages(prev => [...prev, newVoiceMessage]);
+      setAudioBlob(null);
+      setRecordingTime(0);
+     
     } catch (error) {
       console.error('Error uploading voice message:', error);
     } finally {

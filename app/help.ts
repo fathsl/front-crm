@@ -279,10 +279,6 @@ export interface SendMessageRequest {
     receiverId: number;
     content: string;
     messageType: MessageType;
-    fileName: string;
-    fileSize: number;
-    mimeType: string;
-    fileUrl: string;
 }
 
 export interface CreateMessageRequest {
