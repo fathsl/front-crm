@@ -1,7 +1,7 @@
 import { useAtomValue } from "jotai";
-import { AlertCircle, ArrowLeft, CheckCircle, Clock, DownloadIcon, Edit3, FileIcon, FileText, MessageSquare, Mic, MoreVertical, Paperclip, Pause, Play, Plus, Search, Send, Square, Trash2, Users, Volume2, X, XCircle } from "lucide-react";
+import { AlertCircle, ArrowLeft, CheckCircle, Clock, DownloadIcon, Edit3, ExternalLink, FileIcon, FileText, MessageSquare, Mic, MoreVertical, Paperclip, Pause, Play, Plus, Search, Send, Share, Square, Trash2, Users, Volume2, X, XCircle } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react"; 
-import { formatFileSize, MessageType, type SendMessageRequest, type User } from "~/help";
+import { formatFileSize, IDRIVE_CONFIG, MessageType, type SendMessageRequest, type User } from "~/help";
 import type { Client, CreateDiscussionRequest, Project } from "~/help";
 import type { Discussion } from "~/help";
 import type { Message } from "~/help";
@@ -217,7 +217,7 @@ const ChatApplication: React.FC = () => {
       console.error('Error creating discussion:', error);
     }
   };
-
+  
   const handleFileChange = (e : React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -227,44 +227,98 @@ const ChatApplication: React.FC = () => {
   };
 
   const handleFileUpload = async (file: File) => {
-    if (!selectedDiscussion || !currentUser) return;
+    if (!selectedDiscussion || !currentUser) {
+        console.error('Missing selectedDiscussion or currentUser');
+        alert('Please select a discussion and ensure you are logged in');
+        return;
+    }
+    
     setUploading(true);
-    
-    console.log('Uploading file:', file.name, 'Size:', file.size, 'Type:', file.type);
-    
-    const formData = new FormData();
-    formData.append('discussionId', selectedDiscussion.id.toString());
-    formData.append('senderId', currentUser.userId.toString());
-    formData.append('receiverId', (selectedUser?.userId || 0).toString());
-    formData.append('content', `File: ${file.name}`);
-    formData.append('messageType', MessageType.File.toString());
-    formData.append('file', file);
- 
+   
     try {
+        console.log('Starting file upload:', {
+            fileName: file.name,
+            fileSize: file.size,
+            fileType: file.type,
+            discussionId: selectedDiscussion.id,
+            senderId: currentUser.userId,
+            receiverId: selectedUser?.userId || 0
+        });
+
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('discussionId', selectedDiscussion.id.toString());
+        formData.append('senderId', currentUser.userId.toString());
+        formData.append('receiverId', (selectedUser?.userId || 0).toString());
+        formData.append('content', `File: ${file.name}`);
+        formData.append('messageType', MessageType.File.toString());
+        formData.append('fileName', file.name);
+        formData.append('originalFileName', file.name);
+        formData.append('fileSize', file.size.toString());
+        formData.append('mimeType', file.type || 'application/octet-stream');
+       
+        formData.append('bucketName', 'chat-files');
+        formData.append('fileKey', `${Date.now()}_${file.name}`);
+        formData.append('fileReference', `ref_${Date.now()}_${file.name}`);
+        formData.append('idriveUrl', '');
+       
+        console.log('FormData prepared, sending request...');
+
         const response = await fetch(`${baseUrl}/api/Chat/messages/send-with-file`, {
             method: 'POST',
-            body: formData
+            body: formData,
         });
        
+        console.log('Response received:', {
+            status: response.status,
+            statusText: response.statusText,
+            headers: Object.fromEntries(response.headers.entries())
+        });
+
         if (!response.ok) {
-            const error = await response.text();
-            throw new Error(error || 'File upload failed');
+            let errorMessage = 'File upload failed';
+            try {
+                const errorData = await response.json();
+                console.error('Error response data:', errorData);
+                errorMessage = errorData.message || errorData.error || errorMessage;
+                
+                if (errorData.stackTrace) {
+                    console.error('Server stack trace:', errorData.stackTrace);
+                }
+            } catch (parseError) {
+                try {
+                    const errorText = await response.text();
+                    console.error('Error response text:', errorText);
+                    errorMessage = errorText || errorMessage;
+                } catch {
+                    console.error('Could not parse error response');
+                }
+            }
+            throw new Error(`${response.status}: ${errorMessage}`);
         }
        
         const message = await response.json();
-        console.log('File upload response:', message);
+        console.log('File message saved successfully:', message);
        
         setMessages(prev => [...prev, message]);
        
         if (fileInputRef.current) fileInputRef.current.value = '';
         setSelectedFile(null);
+
+        console.log('File uploaded successfully!');
        
-      } catch (error) {
-          console.error('Error uploading file:', error);
-      } finally {
-          setUploading(false);
-      }
-  };
+    } catch (error) {
+        console.error('Error uploading file:', error);
+        
+        if (error instanceof TypeError && error.message.includes('fetch')) {
+            alert('Network error: Could not connect to server. Please check your connection.');
+        }else {
+            alert('Failed to upload file: ' + (error as Error).message);
+        }
+    } finally {
+        setUploading(false);
+    }
+};
 
   const handleTaskSend = async () => {
     if ((!taskContent.trim() && !taskFile && !taskAudioBlob) || !selectedDiscussion || !currentUser) {
@@ -545,58 +599,74 @@ const ChatApplication: React.FC = () => {
 
   const sendVoiceMessage = async () => {
     if (!audioBlob || !selectedDiscussion || !currentUser) return;
-   
-    const formData = new FormData();
-    formData.append('discussionId', selectedDiscussion.id.toString());
-    formData.append('senderId', currentUser.userId.toString());
-    formData.append('receiverId', (selectedUser?.userId ?? '').toString());
-    formData.append('content', 'Voice message');
-    formData.append('messageType', '3');
-    formData.append('duration', recordingTime.toString());
-    formData.append('voiceFile', audioBlob, 'voice_message.webm');
-   
+    
     try {
-      setUploading(true);
-      console.log('Sending voice message with duration:', recordingTime);
-     
+        setUploading(true);
+        const voiceFileName = `voice_${Date.now()}.webm`;
+        const audioFile = new File([audioBlob], voiceFileName, {
+            type: 'audio/webm'
+        });
+
+        const formData = new FormData();
+        formData.append('audioFile', audioBlob, voiceFileName);
+        formData.append('discussionId', selectedDiscussion.id.toString());
+        formData.append('senderId', currentUser.userId.toString());
+        formData.append('receiverId', (selectedUser?.userId || 0).toString());
+        formData.append('content', 'Voice message');
+        formData.append('messageType', '3');
+        formData.append('fileName', voiceFileName);
+        formData.append('originalFileName', voiceFileName);
+        formData.append('fileSize', audioFile.size.toString());
+        formData.append('mimeType', audioFile.type);
+        formData.append('duration', Math.round(recordingTime).toString());
+        formData.append('bucketName', 'voice-messages');
+        formData.append('fileKey', `voice_${Date.now()}_${voiceFileName}`);
+        formData.append('fileReference', `voice_ref_${Date.now()}_${voiceFileName}`);
+        
+        console.log('Sending voice message with duration:', recordingTime);
+       
       const response = await fetch(`${baseUrl}/api/Chat/messages/send-with-voice`, {
         method: 'POST',
         body: formData,
       });
-     
+       
       if (!response.ok) {
-        const error = await response.text();
-        throw new Error(`Failed to send voice message: ${error}`);
-      }
-     
+            const error = await response.text();
+            throw new Error(`Failed to send voice message: ${error}`);
+        }
+       
       const result = await response.json();
       console.log('Voice message sent successfully:', result);
-     
+       
       const newVoiceMessage: Message = {
-        id: result.id,
-        discussionId: selectedDiscussion?.id,
-        senderId: result.senderId,
-        senderName: currentUser.fullName,
-        content: result.content,
-        messageType: result.messageType,
-        isEdited: false,
-        timestamp: new Date(),
-        createdAt: new Date(result.createdAt),
-        fileReference: result.fileReference,
-        duration: result.duration || recordingTime,
-        receiverId: selectedUser?.userId,
-        assignedUserIds : []
-      };
-     
+            id: result.id,
+            discussionId: selectedDiscussion?.id,
+            senderId: result.senderId,
+            senderName: currentUser.fullName,
+            content: result.content,
+            messageType: result.messageType,
+            isEdited: false,
+            timestamp: new Date(),
+            createdAt: new Date(result.createdAt),
+            fileReference: result.fileReference,
+            duration: result.duration || recordingTime,
+            receiverId: selectedUser?.userId,
+            assignedUserIds: [],
+            idriveUrl: result.idriveUrl,
+            fileName: result.fileName,
+            mimeType: result.mimeType
+        };
+       
       setMessages(prev => [...prev, newVoiceMessage]);
       setAudioBlob(null);
       setRecordingTime(0);
-     
-    } catch (error) {
-      console.error('Error uploading voice message:', error);
-    } finally {
-      setUploading(false);
-    }
+        
+      } catch (error) {
+          console.error('Error uploading voice message:', error);
+          alert('Failed to send voice message: ' + (error as Error).message);
+      } finally {
+          setUploading(false);
+      }
   };
 
   const base64ToBlob = (base64Data: string, mimeType: string = 'audio/webm'): Blob | undefined => {
@@ -643,16 +713,6 @@ const ChatApplication: React.FC = () => {
       return;
     }
   
-    if (audioRef.current && audioRef.current.src && playingVoiceId === null) {
-      try {
-        await audioRef.current.play();
-        setPlayingVoiceId(message.id);
-        return;
-      } catch (error) {
-        console.error('Error resuming audio:', error);
-      }
-    }
-  
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.currentTime = 0;
@@ -661,28 +721,15 @@ const ChatApplication: React.FC = () => {
     }
   
     try {
-      let audioBlob: Blob | undefined;
       let audioUrl: string;
   
       if (message.audioBlob) {
         console.log('Using local audioBlob');
-        audioBlob = message.audioBlob;
-      }
-      else if (message.fileReference && message.fileReference.startsWith('data:')) {
-        console.log('Using fileReference base64 data');
-        const mimeType = message.fileReference.split(';')[0].split(':')[1] || 'audio/webm';
-        audioBlob = base64ToBlob(message.fileReference, mimeType);
-        if (!audioBlob) {
-          throw new Error('Failed to create blob from base64 data');
-        }
-      }
-      else {
-        console.log(`Fetching voice message from API for message ID: ${message.id}`);
+        audioUrl = URL.createObjectURL(message.audioBlob);
+      } else {
+        console.log(`Fetching voice message URL for message ID: ${message.id}`);
         const response = await fetch(`${baseUrl}/api/Chat/messages/${message.id}/voice`, {
-          method: 'GET',
-          headers: {
-            'Accept': 'audio/webm,audio/wav,audio/ogg,audio/mp3,audio/mpeg,audio/m4a',
-          },
+          method: 'GET'
         });
   
         if (!response.ok) {
@@ -690,19 +737,16 @@ const ChatApplication: React.FC = () => {
           throw new Error(`Failed to fetch voice message: ${errorText}`);
         }
   
-        audioBlob = await response.blob();
-        if (audioBlob.size === 0) {
-          throw new Error('Empty audio data received from server');
+        const data = await response.json();
+        audioUrl = data.audioUrl;
+        
+        if (!audioUrl) {
+          throw new Error('No audio URL received from server');
         }
-  
-        const mimeType = response.headers.get('Content-Type') || 'audio/webm';
-        console.log('Fetched blob size:', audioBlob.size, 'type:', mimeType);
       }
   
       const audio = new Audio();
-      audioUrl = URL.createObjectURL(audioBlob);
       audio.src = audioUrl;
-      
       audioRef.current = audio;
   
       console.log('Starting audio playback...');
@@ -712,14 +756,18 @@ const ChatApplication: React.FC = () => {
       audio.onended = () => {
         console.log('Audio playback ended');
         setPlayingVoiceId(null);
-        URL.revokeObjectURL(audioUrl);
+        if (message.audioBlob) {
+          URL.revokeObjectURL(audioUrl);
+        }
         audioRef.current = null;
       };
   
       audio.onerror = (error) => {
         console.error('Audio playback error:', error);
         setPlayingVoiceId(null);
-        URL.revokeObjectURL(audioUrl);
+        if (message.audioBlob) {
+          URL.revokeObjectURL(audioUrl);
+        }
         audioRef.current = null;
         alert('Error playing voice message');
       };
@@ -744,6 +792,25 @@ const ChatApplication: React.FC = () => {
       URL.revokeObjectURL(audioRef.current.src);
       audioRef.current = null;
       setPlayingVoiceId(null);
+    }
+  };
+
+  const downloadFile = async (messageId: number, fileName: string) => {
+    try {
+      const response = await fetch(`${baseUrl}/api/Chat/messages/${messageId}/file`, {
+        method: 'GET'
+      });
+  
+      if (!response.ok) {
+        throw new Error('Failed to get download URL');
+      }
+  
+      const data = await response.json();
+      
+      window.open(data.downloadUrl, '_blank');
+    } catch (error) {
+      console.error('Error downloading file:', error);
+      alert('Failed to download file');
     }
   };
 
@@ -998,25 +1065,109 @@ const ChatApplication: React.FC = () => {
     setTaskContent('');
   };
 
-  const VoiceMessage = ({ message }: { message: Message }) => (
-    <div className="flex items-center space-x-3 py-2">
-      <button
-        onClick={() => playVoiceMessage(message)}
-        className={`p-2 rounded-full transition ${
-          message.senderId === currentUser?.userId
-            ? 'bg-white/20 hover:bg-white/30 text-white'
-            : 'bg-blue-100 hover:bg-blue-200 text-blue-600'
-        }`}
-        disabled={!message.fileReference && !message.audioBlob}
-      >
-        {playingVoiceId === message.id ? <Pause size={16} /> : <Play size={16} />}
-      </button>
-      <div className="flex items-center space-x-2">
-        <Volume2 size={16} className="opacity-70" />
-        <span className="text-sm">{formatTime(message.duration || 0)}</span>
+  const VoiceMessage = ({ message }: { message: Message }) => {
+    const shareVoiceMessage = () => {
+      if (message.idriveUrl) {
+        navigator.clipboard.writeText(message.idriveUrl);
+        alert('Voice message URL copied to clipboard!');
+      }
+    };
+  
+    return (
+      <div className="flex items-center space-x-3 py-2">
+        <button
+          onClick={() => playVoiceMessage(message)}
+          className={`p-2 rounded-full transition ${
+            message.senderId === currentUser?.userId
+              ? 'bg-white/20 hover:bg-white/30 text-white'
+              : 'bg-blue-100 hover:bg-blue-200 text-blue-600'
+          }`}
+        >
+          {playingVoiceId === message.id ? <Pause size={16} /> : <Play size={16} />}
+        </button>
+        <div className="flex items-center space-x-2">
+          <Volume2 size={16} className="opacity-70" />
+          <span className="text-sm">{formatTime(message.duration || 0)}</span>
+        </div>
+        {message.idriveUrl && (
+          <button
+            onClick={shareVoiceMessage}
+            className="p-1 rounded hover:bg-white/20 transition"
+            title="Copy voice message URL"
+          >
+            <Share size={12} className="opacity-70" />
+          </button>
+        )}
       </div>
-    </div>
-  );
+    );
+  };
+
+  const FileMessage = ({ message }: { message: Message }) => {
+    const handleDownload = () => {
+      downloadFile(message.id, message.fileName || 'file');
+    };
+  
+    const handleOpen = () => {
+      if (message.idriveUrl) {
+        window.open(message.idriveUrl, '_blank');
+      }
+    };
+  
+    const shareFile = () => {
+      if (message.idriveUrl) {
+        navigator.clipboard.writeText(message.idriveUrl);
+        alert('File URL copied to clipboard!');
+      }
+    };
+  
+    return (
+      <div className={`p-3 rounded-lg border ${message.senderId === currentUser?.userId ? 'bg-blue-50 border-blue-200' : 'bg-white border-gray-200'} w-full`}>
+        <div className="flex items-start">
+          <div className="bg-blue-100 p-2 rounded-lg">
+            <FileIcon className="text-blue-600" size={20} />
+          </div>
+          <div className="ml-3 flex-1 min-w-0">
+            <p className="text-sm font-medium text-gray-900 truncate">
+              {message.fileName}
+            </p>
+            {message.fileSize && (
+              <p className="text-xs text-gray-500">
+                {formatFileSize(message.fileSize)}
+                {message.mimeType && ` • ${message.mimeType.split('/')[1].toUpperCase()}`}
+              </p>
+            )}
+            <div className="mt-2 flex space-x-2">
+              <button
+                onClick={handleDownload}
+                className="inline-flex items-center text-sm text-blue-600 hover:text-blue-800"
+              >
+                <DownloadIcon className="w-4 h-4 mr-1" />
+                Download
+              </button>
+              {message.idriveUrl && (
+                <>
+                  <button
+                    onClick={handleOpen}
+                    className="inline-flex items-center text-sm text-green-600 hover:text-green-800"
+                  >
+                    <ExternalLink className="w-4 h-4 mr-1" />
+                    Open
+                  </button>
+                  <button
+                    onClick={shareFile}
+                    className="inline-flex items-center text-sm text-purple-600 hover:text-purple-800"
+                  >
+                    <Share className="w-4 h-4 mr-1" />
+                    Share
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   const handleDownloadExcel = async (discussionId: number, discussionTitle: string) => {
     try {
@@ -1266,36 +1417,9 @@ const ChatApplication: React.FC = () => {
                     <VoiceMessage message={message} />
                   </div>
                 ): message.messageType === MessageType.File ? (
-                  <div className={`p-3 rounded-lg border ${message.senderId === currentUser?.userId ? 'bg-blue-50 border-blue-200' : 'bg-white border-gray-200'} w-full`}>
-                  <div className="flex items-start">
-                    <div className="bg-blue-100 p-2 rounded-lg">
-                      <FileIcon className="text-blue-600" size={20} />
-                    </div>
-                    <div className="ml-3 flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900 truncate">
-                        {message.fileName}
-                      </p>
-                      {message.fileSize && (
-                        <p className="text-xs text-gray-500">
-                          {formatFileSize(message.fileSize)}
-                          {message.mimeType && ` • ${message.mimeType.split('/')[1].toUpperCase()}`}
-                        </p>
-                      )}
-                      {message.fileReference && (
-                        <a
-                          href={`${baseUrl}${message.fileReference}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="mt-2 inline-flex items-center text-sm text-blue-600 hover:text-blue-800"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <DownloadIcon className="w-4 h-4 mr-1" />
-                          Download
-                        </a>
-                      )}
-                    </div>
+                  <div>
+                    <FileMessage message={message} />
                   </div>
-                </div>
                 ) : (
                   <div className={`rounded-2xl rounded-br-md p-4 shadow-sm ${message.senderId === currentUser?.userId ? 'bg-blue-500 text-white' : 'bg-white/90 border border-slate-200 text-slate-800'}`}>
                     <p className="text-sm leading-relaxed">{message.content}</p>

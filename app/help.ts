@@ -233,6 +233,7 @@ export interface Message {
     taskId?: number;
     dueDate?: Date | string;
     estimatedTime?: string;
+    idriveUrl?: string;
 }
 
 export interface Chat {
@@ -305,4 +306,11 @@ export const formatFileSize = (bytes: number): string => {
   const sizes = ['Bytes', 'KB', 'MB', 'GB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+};
+
+export const IDRIVE_CONFIG = {
+  apiKey: 'nIbgyu0L0E2DFpgHyBCc',
+  apiSecret: 'uJ3PN9exJoJJQ1TogFOrWlXYKd2eIsaVMxvX90E3',
+  baseUrl: 'c4l2.or2.idrivee2-56.com',
+  bucketName: 'unixpadel'
 };
