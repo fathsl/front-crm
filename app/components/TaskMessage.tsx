@@ -1,4 +1,4 @@
-import { CheckCircle, Clock, AlertCircle, Play, Pause, FileText } from 'lucide-react';
+import { CheckCircle, Clock, AlertCircle, Play, Pause, FileText, UserIcon, MoreVertical, Calendar, Volume2 } from 'lucide-react';
 import { useState } from 'react';
 import { TaskStatus, TaskPriority } from '~/types/task';
 
@@ -88,12 +88,20 @@ export const TaskMessage = ({
     return status ? statusConfig[status] || defaultStatus : defaultStatus;
   };
 
-  const priorityColors = {
-    [TaskPriority.Low]: 'bg-green-100 text-green-800',
-    [TaskPriority.Medium]: 'bg-yellow-100 text-yellow-800',
-    [TaskPriority.High]: 'bg-red-100 text-red-800',
-  } as const;
-
+  const priorityConfig = {
+    [TaskPriority.Low]: {
+      color: 'bg-green-100 text-green-800',
+      label: 'Low',
+    },
+    [TaskPriority.Medium]: {
+      color: 'bg-yellow-100 text-yellow-800',
+      label: 'Medium',
+    },
+    [TaskPriority.High]: {
+      color: 'bg-red-100 text-red-800',
+      label: 'High',
+    },
+  };
   const statusOptions = Object.entries(statusConfig).map(([value, config]) => ({
     value: value as TaskStatus,
     ...config,
@@ -110,81 +118,108 @@ export const TaskMessage = ({
     }
   };
 
+  const formatTime = (seconds: number): string => {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const StatusIcon = getStatusConfig(currentStatus).icon;
+
   return (
-    <div className="bg-white border border-gray-200 rounded-2xl p-4 max-w-sm">
-      <div className="flex items-start justify-between mb-3">
-        <div className="flex items-center space-x-2">
-          <FileText className="w-4 h-4 text-blue-500" />
-          <span className="font-semibold text-gray-900 text-sm">Task</span>
-        </div>
-        <div className="flex items-center space-x-2">
-          <span
-            className={`text-xs px-2 py-1 rounded-full ${
-              getStatusConfig(currentStatus).color
-            }`}
-          >
-            {getStatusConfig(currentStatus).label}
-          </span>
-          <span
-            className={`text-xs px-2 py-1 rounded-full ${priorityColors[task.priority]}`}
-          >
-            {task.priority}
-          </span>
+    <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden transition-all hover:shadow-xl">
+      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 px-5 py-4 border-b border-gray-100">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <div className="p-2 bg-white rounded-lg shadow-sm">
+              <FileText className="w-5 h-5 text-blue-600" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-gray-900">{task.title}</h3>
+              <p className="text-sm text-gray-500">Task • {new Date().toLocaleDateString()}</p>
+            </div>
+          </div>
+          <button className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100">
+            <MoreVertical className="w-5 h-5" />
+          </button>
         </div>
       </div>
-      
-      <div className="mb-3">
-        <h3 className="font-medium text-gray-900 text-sm mb-1">{task.title}</h3>
+
+      <div className="p-5 space-y-4">
         {task.description && (
-          <p className="text-gray-600 text-xs">{task.description}</p>
+          <p className="text-gray-700 text-sm leading-relaxed">{task.description}</p>
+        )}
+
+        <div className="flex items-center space-x-3">
+          <div className={`inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-full text-xs font-medium ${getStatusConfig(currentStatus).color}`}>
+            <StatusIcon className="w-3.5 h-3.5" />
+            <span>{getStatusConfig(currentStatus).label}</span>
+          </div>
+          <div className={`inline-flex items-center px-3 py-1.5 rounded-full text-xs font-medium ${priorityConfig[task.priority].color}`}>
+            <span>{priorityConfig[task.priority].label} Priority</span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4 text-sm">
+          {task.dueDate && (
+            <div className="flex items-center space-x-2">
+              <Calendar className="w-4 h-4 text-gray-400" />
+              <span className="text-gray-600">Due {new Date(task.dueDate).toLocaleDateString()}</span>
+            </div>
+          )}
+          
+          {task.assignedTo && (
+            <div className="flex items-center space-x-2">
+              <UserIcon className="w-4 h-4 text-gray-400" />
+              <span className="text-gray-600">{task.assignedTo}</span>
+            </div>
+          )}
+        </div>
+
+        {task.duration && onPlayVoice && (
+          <div className="bg-gray-50 rounded-xl p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <button
+                  onClick={onPlayVoice}
+                  className="w-10 h-10 bg-blue-600 hover:bg-blue-700 text-white rounded-full flex items-center justify-center transition-colors"
+                >
+                  {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
+                </button>
+                <div className="flex items-center space-x-2">
+                  <Volume2 className="w-4 h-4 text-gray-500" />
+                  <span className="text-sm font-medium text-gray-700">{formatTime(task.duration)}</span>
+                </div>
+              </div>
+              <div className="text-xs text-gray-500">Voice message</div>
+            </div>
+          </div>
         )}
       </div>
 
-    <div className="flex items-center justify-between text-xs text-gray-500 mt-3 pt-3 border-t border-gray-100">
-      {task.dueDate && (
-        <div className="flex items-center">
-          <Clock className="w-3.5 h-3.5 text-gray-400 mr-1" />
-          <span>{new Date(task.dueDate).toLocaleDateString()}</span>
+      <div className="px-5 py-4 bg-gray-50 border-t border-gray-100">
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-medium text-gray-700">Update status:</span>
+          <div className="flex space-x-2">
+            {statusOptions.map((option) => (
+              <button
+                key={option.value}
+                onClick={() => handleStatusClick(option.value)}
+                disabled={isUpdating || option.value === currentStatus}
+                className={`p-2 rounded-lg transition-all flex items-center space-x-1.5 ${
+                  option.value === currentStatus
+                    ? `${option.color} cursor-default`
+                    : 'bg-gray-100 hover:bg-gray-200 text-gray-600'
+                } ${isUpdating ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                title={option.label}
+              >
+                <option.icon className="w-3.5 h-3.5" />
+                <span className="text-xs font-medium">{option.label}</span>
+              </button>
+            ))}
+          </div>
         </div>
-      )}
-
-      {task.duration && onPlayVoice && (
-        <button
-          onClick={onPlayVoice}
-          className="flex items-center text-blue-600 hover:text-blue-800"
-        >
-          {isPlaying ? (
-            <Pause className="w-3.5 h-3.5 mr-1" />
-          ) : (
-            <Play className="w-3.5 h-3.5 mr-1" />
-          )}
-          <span>{formatTime(task.duration)}</span>
-        </button>
-      )}
-    </div>
-
-    <div className="flex flex-wrap gap-1 mb-3">
-        {statusOptions.map((option) => (
-          <button
-            key={option.value}
-            onClick={() => handleStatusClick(option.value)}
-            disabled={isUpdating || option.value === currentStatus}
-            className={`text-xs px-2 py-1 rounded-full transition-colors ${
-              option.value === currentStatus
-                ? option.color
-                : 'bg-gray-50 hover:bg-gray-100 text-gray-600'
-            } ${isUpdating ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-          >
-            {option.label}
-          </button>
-        ))}
       </div>
-  </div>
+    </div>
   );
 };
-
-function formatTime(seconds: number): string {
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60);
-  return `${mins}:${secs.toString().padStart(2, '0')}`;
-}

@@ -1,10 +1,9 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { 
   CheckCircle, 
   Clock, 
   AlertCircle, 
-  XCircle,
-  User,
+  UserIcon,
   Calendar,
   Play,
   Pause,
@@ -14,16 +13,17 @@ import {
   Mic,
   Edit3,
   type LucideIcon,
+  ExternalLink,
 } from 'lucide-react';
 import { type Message, MessageType } from '~/help';
 import { TaskStatus, TaskPriority } from '~/types/task';
+import { userAtom } from '~/utils/userAtom';
+import { useAtomValue } from 'jotai';
 
 interface CurrentUser {
     userId: number;
     name: string;
 }
-
-// Using TaskStatus and TaskPriority from ~/types/task
 
 interface TaskMessageDisplayProps {
   message: Message;
@@ -46,6 +46,9 @@ interface PriorityConfig {
 
 const TaskMessageDisplay: React.FC<TaskMessageDisplayProps> = ({ message, currentUser, onUpdateTaskStatus, onPlayVoice, playingVoiceId }) => {
   const [isUpdatingStatus, setIsUpdatingStatus] = useState<boolean>(false);
+  const isVoiceMessage = message.fileReference && message.duration && message.duration > 0;
+  const isFileMessage = message.fileReference && message.fileName;
+  const isPlaying = playingVoiceId === message.id;
 
   const getStatusConfig = (status: TaskStatus): StatusConfig => {
     const statusConfig = {
@@ -143,71 +146,135 @@ const TaskMessageDisplay: React.FC<TaskMessageDisplayProps> = ({ message, curren
   const canUpdateStatus = isOwner || isAssigned;
 
   return (
-    <div className={`flex ${isOwner ? 'justify-end' : 'justify-start'} mb-4`}>
-      <div className={`max-w-md rounded-xl shadow-sm border ${
+    <div className={`flex ${isOwner ? 'justify-end' : 'justify-start'} mb-6`}>
+      <div className={`max-w-md w-full rounded-2xl shadow-lg border-0 overflow-hidden ${
         isOwner 
-          ? 'bg-blue-500 text-white border-blue-600' 
-          : 'bg-white text-slate-900 border-slate-200'
+          ? 'bg-gradient-to-br from-blue-500 to-blue-600 text-white' 
+          : 'bg-white text-gray-900'
       }`}>
-        <div className={`px-4 py-3 border-b ${
-          isOwner ? 'border-blue-400/30' : 'border-slate-200'
+        
+        <div className={`px-5 py-4 border-b ${
+          isOwner ? 'border-blue-400/20' : 'border-gray-100'
         }`}>
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2">
-              <TaskTypeIcon size={16} className={isOwner ? 'text-blue-100' : 'text-blue-600'} />
-              <span className="font-medium text-sm">Task</span>
+              {isVoiceMessage ? (
+                <div className={`p-2 rounded-full ${
+                  isOwner ? 'bg-white/20' : 'bg-blue-50'
+                }`}>
+                  <Mic size={16} className={isOwner ? 'text-white' : 'text-blue-600'} />
+                </div>
+              ) : isFileMessage ? (
+                <div className={`p-2 rounded-full ${
+                  isOwner ? 'bg-white/20' : 'bg-green-50'
+                }`}>
+                  <FileText size={16} className={isOwner ? 'text-white' : 'text-green-600'} />
+                </div>
+              ) : (
+                <div className={`p-2 rounded-full ${
+                  isOwner ? 'bg-white/20' : 'bg-gray-50'
+                }`}>
+                  <MessageSquare size={16} className={isOwner ? 'text-white' : 'text-gray-600'} />
+                </div>
+              )}
+              <span className="font-medium">
+                Task {isVoiceMessage ? '(Voice)' : isFileMessage ? '(File)' : ''}
+              </span>
             </div>
-            <div className={`flex items-center space-x-1 px-2 py-1 rounded-full border text-xs font-medium ${
-              isOwner ? 'border-white/20 text-white' : statusConfig.color
+            
+            <div className={`px-3 py-1 rounded-full text-xs font-medium ${
+              isOwner ? 'bg-white/20 text-white' : statusConfig.color
             }`}>
-              <StatusIcon size={12} />
-              <span>{statusConfig.label}</span>
+              <StatusIcon size={12} className="inline mr-1" />
+              {statusConfig.label}
             </div>
           </div>
         </div>
 
-        <div className="px-4 py-3">
-          <div className="mb-3">
-            {message.taskTitle && message.taskTitle !== message.content ? (
-              <h4 className="font-semibold mb-1">{message.taskTitle}</h4>
-            ) : null}
-            
-            {message.duration ? (
-              <div className="flex items-center space-x-3 py-2">
+        <div className="px-5 py-4 space-y-4">
+          
+          {message.taskTitle && message.taskTitle !== message.content && (
+            <h3 className="font-semibold text-lg leading-tight">{message.taskTitle}</h3>
+          )}
+
+          {isVoiceMessage && (
+            <div className={`flex items-center justify-between p-4 rounded-xl ${
+              isOwner ? 'bg-white/10' : 'bg-gray-50'
+            }`}>
+              <div className="flex items-center space-x-3">
                 <button
                   onClick={() => onPlayVoice(message)}
-                  className={`p-2 rounded-full transition ${
-                    isOwner
-                      ? 'bg-white/20 hover:bg-white/30 text-white'
-                      : 'bg-blue-100 hover:bg-blue-200 text-blue-600'
-                  }`}
                   disabled={!message.fileReference}
+                  className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${
+                    isOwner
+                      ? 'bg-white/20 hover:bg-white/30 active:scale-95'
+                      : 'bg-blue-500 hover:bg-blue-600 text-white active:scale-95'
+                  } disabled:opacity-50 disabled:cursor-not-allowed`}
                 >
-                  {playingVoiceId === message.id ? <Pause size={16} /> : <Play size={16} />}
+                  {isPlaying ? <Pause size={20} /> : <Play size={20} />}
                 </button>
+                
                 <div className="flex items-center space-x-2">
-                  <Volume2 size={16} className="opacity-70" />
-                  <span className="text-sm">{formatTime(message.duration)}</span>
+                  <Volume2 size={18} className="opacity-70" />
+                  <span className="font-medium">{formatTime(message.duration!)}</span>
                 </div>
               </div>
-            ) : message.fileName ? (
-              <div className="inline-flex items-center">
-                <FileText size={16} className="mr-2" />
-                <span>{message.fileName}</span>
-                {message.fileSize !== undefined && message.fileSize > 0 && (
-                  <span className="ml-2 text-sm opacity-75">
-                    ({formatFileSize(message.fileSize)})
-                  </span>
-                )}
-              </div>
-            ) : (
-              <p className="whitespace-pre-wrap">{message.content}</p>
-            )}
-          </div>
+            </div>
+          )}
 
-          <div className="space-y-2 text-sm">
+          {isFileMessage && (
+            <div className={`flex items-center justify-between p-4 rounded-xl transition-all hover:scale-[1.02] ${
+              isOwner ? 'bg-white/10 hover:bg-white/20' : 'bg-gray-50 hover:bg-gray-100'
+            }`}>
+              <div className="flex items-center space-x-3 min-w-0">
+                <div className={`p-2 rounded-lg ${
+                  isOwner ? 'bg-white/20' : 'bg-green-100'
+                }`}>
+                  <FileText size={20} className={isOwner ? 'text-white' : 'text-green-600'} />
+                </div>
+                
+                <div className="min-w-0">
+                  <p className="font-medium truncate">{message.fileName}</p>
+                  {message.fileSize && message.fileSize > 0 && (
+                    <p className={`text-sm ${isOwner ? 'text-white/70' : 'text-gray-500'}`}>
+                      {formatFileSize(message.fileSize)}
+                    </p>
+                  )}
+                </div>
+              </div>
+              
+              <div className={`p-2 rounded-full ${
+                isOwner ? 'bg-white/20' : 'bg-green-100'
+              }`}>
+                <ExternalLink size={16} className={isOwner ? 'text-white' : 'text-green-600'} />
+              </div>
+            </div>
+          )}
+
+          {message.content && 
+           message.content.trim() !== '' && 
+           message.content !== message.fileName && 
+           message.content !== message.taskTitle && (
+            <div className={`p-3 rounded-xl ${
+              isOwner ? 'bg-white/10' : 'bg-gray-50'
+            }`}>
+              <p className="whitespace-pre-wrap leading-relaxed">{message.content}</p>
+            </div>
+          )}
+
+          {!isVoiceMessage && !isFileMessage && message.content && (
+            <div className={`p-3 rounded-xl ${
+              isOwner ? 'bg-white/10' : 'bg-gray-50'
+            }`}>
+              <p className="whitespace-pre-wrap leading-relaxed">{message.content}</p>
+            </div>
+          )}
+
+          <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <span className={isOwner ? 'text-blue-100' : 'text-slate-600'}>Priority:</span>
+              <span className={`text-sm ${isOwner ? 'text-white/80' : 'text-gray-600'}`}>
+                Priority
+              </span>
               <span className={`font-medium ${isOwner ? 'text-white' : priorityConfig.color}`}>
                 {priorityConfig.label}
               </span>
@@ -215,10 +282,12 @@ const TaskMessageDisplay: React.FC<TaskMessageDisplayProps> = ({ message, curren
 
             {(message.assignedUserIds?.length ?? 0) > 0 && (
               <div className="flex items-center justify-between">
-                <span className={isOwner ? 'text-blue-100' : 'text-slate-600'}>Assigned to:</span>
+                <span className={`text-sm ${isOwner ? 'text-white/80' : 'text-gray-600'}`}>
+                  Assigned
+                </span>
                 <div className="flex items-center space-x-1">
-                  <User size={12} />
-                  <span className={isOwner ? 'text-white' : 'text-slate-900'}>
+                  <UserIcon size={14} />
+                  <span className="font-medium">
                     {message.assignedUserIds?.length ?? 0} user{message.assignedUserIds?.length !== 1 ? 's' : ''}
                   </span>
                 </div>
@@ -227,10 +296,12 @@ const TaskMessageDisplay: React.FC<TaskMessageDisplayProps> = ({ message, curren
 
             {message.dueDate && (
               <div className="flex items-center justify-between">
-                <span className={isOwner ? 'text-blue-100' : 'text-slate-600'}>Due:</span>
+                <span className={`text-sm ${isOwner ? 'text-white/80' : 'text-gray-600'}`}>
+                  Due Date
+                </span>
                 <div className="flex items-center space-x-1">
-                  <Calendar size={12} />
-                  <span className={isOwner ? 'text-white' : 'text-slate-900'}>
+                  <Calendar size={14} />
+                  <span className="font-medium">
                     {new Date(message.dueDate).toLocaleDateString()}
                   </span>
                 </div>
@@ -240,14 +311,14 @@ const TaskMessageDisplay: React.FC<TaskMessageDisplayProps> = ({ message, curren
         </div>
 
         {canUpdateStatus && (
-          <div className={`px-4 py-3 border-t ${
-            isOwner ? 'border-blue-400/30' : 'border-slate-200'
+          <div className={`px-5 py-4 border-t ${
+            isOwner ? 'border-blue-400/20' : 'border-gray-100'
           }`}>
             <div className="flex items-center justify-between">
-              <span className={`text-xs ${isOwner ? 'text-blue-100' : 'text-slate-600'}`}>
+              <span className={`text-sm font-medium ${isOwner ? 'text-white/90' : 'text-gray-700'}`}>
                 Update Status:
               </span>
-              <div className="flex space-x-1">
+              <div className="flex space-x-2">
                 {Object.values(TaskStatus).map((status) => {
                   const config = getStatusConfig(status);
                   const StatusIconComponent = config.icon;
@@ -258,18 +329,18 @@ const TaskMessageDisplay: React.FC<TaskMessageDisplayProps> = ({ message, curren
                       key={status}
                       onClick={() => handleStatusUpdate(status)}
                       disabled={isCurrentStatus || isUpdatingStatus}
-                      className={`p-1.5 rounded transition-all ${
+                      className={`p-2 rounded-lg transition-all ${
                         isCurrentStatus
                           ? isOwner 
-                            ? 'bg-white/20 text-white cursor-not-allowed'
-                            : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                            ? 'bg-white/30 text-white cursor-not-allowed ring-2 ring-white/50'
+                            : 'bg-slate-200 text-slate-400 cursor-not-allowed ring-2 ring-slate-300'
                           : isOwner
-                            ? 'bg-white/10 hover:bg-white/20 text-white'
-                            : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+                            ? 'bg-white/10 hover:bg-white/20 text-white hover:scale-105 active:scale-95'
+                            : 'bg-slate-100 hover:bg-slate-200 text-slate-600 hover:scale-105 active:scale-95'
                       }`}
                       title={config.label}
                     >
-                      <StatusIconComponent size={12} />
+                      <StatusIconComponent size={14} />
                     </button>
                   );
                 })}
@@ -278,21 +349,26 @@ const TaskMessageDisplay: React.FC<TaskMessageDisplayProps> = ({ message, curren
           </div>
         )}
 
-        <div className={`px-4 py-2 text-xs ${
-          isOwner ? 'text-blue-100' : 'text-slate-500'
-        }`}>
-          {message.senderName && !isOwner && (
-            <span className="font-medium">{message.senderName} • </span>
-          )}
-          {new Date(message.createdAt ?? new Date()).toLocaleTimeString([], { 
-            hour: '2-digit', 
-            minute: '2-digit' 
-          })}
-          {message.isEdited && (
-            <span className="ml-1">
-              <Edit3 size={10} className="inline" /> edited
+        <div className={`px-5 py-3 text-xs ${
+          isOwner ? 'text-white/70' : 'text-gray-500'
+        } border-t ${isOwner ? 'border-blue-400/20' : 'border-gray-100'}`}>
+          <div className="flex items-center justify-between">
+            <span>
+              {message.senderName && !isOwner && (
+                <span className="font-medium">{message.senderName} • </span>
+              )}
+              {new Date(message.createdAt ?? new Date()).toLocaleTimeString([], { 
+                hour: '2-digit', 
+                minute: '2-digit' 
+              })}
             </span>
-          )}
+            {message.isEdited && (
+              <span className="flex items-center space-x-1 italic">
+                <Edit3 size={10} />
+                <span>edited</span>
+              </span>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -300,47 +376,17 @@ const TaskMessageDisplay: React.FC<TaskMessageDisplayProps> = ({ message, curren
 };
 
 const ChatWithTaskMessages: React.FC = () => {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: 1,
-      messageType: MessageType.Task,
-      senderId: 1,
-      senderName: 'John Doe',
-      content: 'Review the project documentation and provide feedback',
-      taskId: 101,
-      taskTitle: 'Document Review Task',
-      taskStatus: TaskStatus.Backlog,
-      taskPriority: TaskPriority.High,
-      assignedUserIds: [2],
-      dueDate: new Date(),
-      createdAt: new Date(),
-      isEdited: false,
-      timestamp: new Date(),
-    },
-    {
-      id: 2,
-      messageType: MessageType.Task,
-      senderId: 2,
-      senderName: 'Jane Smith',
-      content: 'Voice task: Meeting notes discussion',
-      taskId: 102,
-      taskTitle: 'Meeting Notes Review',
-      taskStatus: TaskStatus.InProgress,
-      taskPriority: TaskPriority.Medium,
-      assignedUserIds: [1],
-      dueDate: new Date(),
-      createdAt: new Date(),
-      isEdited: false,
-      timestamp: new Date(),
-    }
-  ]);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const connectedUser = useAtomValue(userAtom);
+  const currentUser: CurrentUser = { userId: connectedUser?.userId || 0, name: connectedUser?.fullName || 'Default Name' };
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const baseUrl = "http://localhost:5178";
 
   const [playingVoiceId, setPlayingVoiceId] = useState<number | null>(null);
-  const currentUser: CurrentUser = { userId: 1, name: 'John Doe' };
 
   const handleUpdateTaskStatus = async (messageId: number, newStatus: TaskStatus, updatedByUserId: number) => {
     try {
-      const response = await fetch(`/api/Chat/messages/${messageId}/task-status`, {
+      const response = await fetch(`${baseUrl}/api/Chat/messages/${messageId}/task-status`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -362,9 +408,105 @@ const ChatWithTaskMessages: React.FC = () => {
     }
   };
 
+  const pauseVoiceMessage = (message: Message) => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+    }
+    setPlayingVoiceId(null);
+  };
+
+  const playVoiceMessage = async (message: Message) => {
+    if (playingVoiceId === message.id) {
+      pauseVoiceMessage(message);
+      return;
+    }
+  
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+      URL.revokeObjectURL(audioRef.current.src);
+      audioRef.current = null;
+    }
+  
+    try {
+      let audioUrl: string;
+  
+      if (message.audioBlob) {
+        console.log('Using local audioBlob');
+        audioUrl = URL.createObjectURL(message.audioBlob);
+      } else {
+        console.log(`Fetching voice message URL for message ID: ${message.id}`);
+        const response = await fetch(`${baseUrl}/api/Chat/messages/${message.id}/voice`, {
+          method: 'GET'
+        });
+  
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`Failed to fetch voice message: ${errorText}`);
+        }
+  
+        const data = await response.json();
+        audioUrl = data.audioUrl;
+        
+        if (!audioUrl) {
+          throw new Error('No audio URL received from server');
+        }
+      }
+  
+      const audio = new Audio();
+      audio.src = audioUrl;
+      audioRef.current = audio;
+  
+      console.log('Starting audio playback...');
+      await audio.play();
+      setPlayingVoiceId(message.id);
+  
+      audio.onended = () => {
+        console.log('Audio playback ended');
+        setPlayingVoiceId(null);
+        if (message.audioBlob) {
+          URL.revokeObjectURL(audioUrl);
+        }
+        audioRef.current = null;
+      };
+  
+      audio.onerror = (error) => {
+        console.error('Audio playback error:', error);
+        setPlayingVoiceId(null);
+        if (message.audioBlob) {
+          URL.revokeObjectURL(audioUrl);
+        }
+        audioRef.current = null;
+        alert('Error playing voice message');
+      };
+    } catch (error) {
+      console.error('Error in playVoiceMessage:', error);
+      alert(error instanceof Error ? error.message : 'Failed to play voice message');
+      audioRef.current = null;
+    }
+  };
+
+  const downloadFile = async (messageId: number, fileName: string) => {
+    try {
+      const response = await fetch(`${baseUrl}/api/Chat/messages/${messageId}/file`, {
+        method: 'GET'
+      });
+  
+      if (!response.ok) {
+        throw new Error('Failed to get download URL');
+      }
+  
+      const data = await response.json();
+      
+      window.open(data.downloadUrl, '_blank');
+    } catch (error) {
+      console.error('Error downloading file:', error);
+      alert('Failed to download file');
+    }
+  };
+
   const handlePlayVoice = (message: Message) => {
-    console.log('Playing voice message:', message);
-    setPlayingVoiceId(playingVoiceId === message.id ? null : message.id);
+    playVoiceMessage(message);
   };
 
   return (

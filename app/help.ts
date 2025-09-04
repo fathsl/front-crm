@@ -234,6 +234,8 @@ export interface Message {
     dueDate?: Date | string;
     estimatedTime?: string;
     idriveUrl?: string;
+    fileUrl?: string;
+    description?: string;
 }
 
 export interface Chat {
