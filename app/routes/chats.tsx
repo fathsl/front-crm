@@ -31,9 +31,6 @@ interface MessageResponse {
   duration?: number;
   createdAt: Date;
   timestamp: string;
-  fileUrl?: string;
-  audioUrl?: string;
-  hasFile?: boolean;
 }
 
 const ChatApplication: React.FC = () => {
@@ -111,6 +108,7 @@ const ChatApplication: React.FC = () => {
       if (response.ok) {
         const data = await response.json();
         setUsers(data);
+        console.log("userrss",data);
         } else {
         throw new Error('Failed to fetch users');
       }
@@ -140,7 +138,7 @@ const ChatApplication: React.FC = () => {
       }
     };
   
-  const fetchProjects = async () => {
+    const fetchProjects = async () => {
         try {
           const response = await fetch('http://localhost:5178/api/Project');
           const data = await response.json();
@@ -148,10 +146,10 @@ const ChatApplication: React.FC = () => {
         } catch (error) {
           console.error('Projects fetch error:', error);
         }
-    };
+      };
     
-  useEffect(() => {
-      fetchProjects();
+      useEffect(() => {
+        fetchProjects();
       }, []);
 
   useEffect(() => {
@@ -283,24 +281,27 @@ const ChatApplication: React.FC = () => {
         }
        
         const message = await response.json();
+        console.log('File message saved successfully:', message);
        
         setMessages(prev => [...prev, message]);
        
         if (fileInputRef.current) fileInputRef.current.value = '';
         setSelectedFile(null);
+
+        console.log('File uploaded successfully!');
        
-      } catch (error) {
-          console.error('Error uploading file:', error);
-          
-          if (error instanceof TypeError && error.message.includes('fetch')) {
-              alert('Network error: Could not connect to server. Please check your connection.');
-          }else {
-              alert('Failed to upload file: ' + (error as Error).message);
-          }
-      } finally {
-          setUploading(false);
-      }
-  };
+    } catch (error) {
+        console.error('Error uploading file:', error);
+        
+        if (error instanceof TypeError && error.message.includes('fetch')) {
+            alert('Network error: Could not connect to server. Please check your connection.');
+        }else {
+            alert('Failed to upload file: ' + (error as Error).message);
+        }
+    } finally {
+        setUploading(false);
+    }
+};
 
   const handleTaskSend = async () => {
     if ((!taskContent.trim() && !taskFile && !taskAudioBlob) || !selectedDiscussion || !currentUser) {
@@ -367,7 +368,7 @@ const ChatApplication: React.FC = () => {
         const formData = new FormData();
         const messageData: TaskMessagePayload = {
           ...baseMessage,
-          duration: Math.floor(taskRecordingTime / 1000), // Convert to seconds
+          duration: Math.floor(taskRecordingTime / 1000),
           fileSize: taskAudioBlob.size,
           fileName: 'voice-message.webm',
           fileType: 'audio/webm'
@@ -380,7 +381,6 @@ const ChatApplication: React.FC = () => {
           body: formData
         });
       } else {
-        // For text-only task messages
         response = await fetch(`${baseUrl}/api/Chat/messages/send`, {
           method: 'POST',
           headers: {
@@ -407,7 +407,6 @@ const ChatApplication: React.FC = () => {
           timestamp: result.timestamp || new Date().toISOString()
         }]);
         
-        // Reset form
         setTaskContent('');
         setTaskFile(null);
         setTaskAudioBlob(null);
@@ -604,7 +603,9 @@ const ChatApplication: React.FC = () => {
         formData.append('bucketName', 'voice-messages');
         formData.append('fileKey', `voice_${Date.now()}_${voiceFileName}`);
         formData.append('fileReference', `voice_ref_${Date.now()}_${voiceFileName}`);
-               
+        
+        console.log('Sending voice message with duration:', recordingTime);
+       
       const response = await fetch(`${baseUrl}/api/Chat/messages/send-with-voice`, {
         method: 'POST',
         body: formData,
@@ -853,16 +854,13 @@ const ChatApplication: React.FC = () => {
   ) => {
     if (!taskContent.trim() && !taskFile && !taskAudioBlob) return;
   
-    const finalContent = taskContent.trim() || 
-      (taskFile ? `Task with file: ${taskFile.name}` : 'Voice task');
-  
     const taskMessageData = {
       discussionId: selectedDiscussion?.id ?? 0,
       senderId: currentUser?.userId ?? 0,
       receiverId: selectedUser?.userId || null,
-      content: finalContent,
+      content: taskContent,
       messageType: MessageType.Task,
-      taskTitle: finalContent,
+      taskTitle: taskContent,
       taskDescription: null,
       taskStatus: taskStatus,
       taskPriority: TaskPriority.Medium,
@@ -875,10 +873,8 @@ const ChatApplication: React.FC = () => {
   
     try {
       let response: Response;
-      
       if (taskDrawerType === MessageType.File && taskFile) {
         const formData = new FormData();
-        
         (Object.keys(taskMessageData) as (keyof typeof taskMessageData)[]).forEach(key => {
           const value = taskMessageData[key];
           if (value !== null && value !== undefined) {
@@ -891,17 +887,13 @@ const ChatApplication: React.FC = () => {
             }
           }
         });
-        
         formData.append('file', taskFile);
-        
         response = await fetch(`${baseUrl}/api/Chat/messages/send-task-with-file`, {
           method: 'POST',
           body: formData
         });
-        
       } else if (taskDrawerType === MessageType.Voice && taskAudioBlob) {
         const formData = new FormData();
-        
         (Object.keys(taskMessageData) as (keyof typeof taskMessageData)[]).forEach(key => {
           const value = taskMessageData[key];
           if (value !== null && value !== undefined) {
@@ -914,15 +906,12 @@ const ChatApplication: React.FC = () => {
             }
           }
         });
-        
         formData.append('duration', taskRecordingTime.toString());
-        formData.append('audioFile', taskAudioBlob, 'task-voice.webm');
-        
+        formData.append('audioFile', taskAudioBlob, 'voice-message.webm');
         response = await fetch(`${baseUrl}/api/Chat/messages/send-task-with-voice`, {
           method: 'POST',
           body: formData
         });
-        
       } else {
         response = await fetch(`${baseUrl}/api/Chat/messages/send-with-task`, {
           method: 'POST',
@@ -933,30 +922,17 @@ const ChatApplication: React.FC = () => {
   
       if (response.ok) {
         const result: MessageResponse = await response.json();
-        
-        const newMessage: Message = {
+        setMessages(prev => [...prev, {
           ...result,
-          assignedUserIds: result.assignedUserIds || [],
-          hasFile: result.hasFile || false,
-          fileName: result.fileName || undefined,
-          fileSize: result.fileSize || undefined,
-          mimeType: result.mimeType || undefined,
-          fileUrl: result.fileUrl || result.audioUrl || undefined,
-          duration: result.duration || undefined,
-          fileReference: result.fileReference || undefined,
-          dueDate: result.dueDate || undefined,
-        };
-        
-        setMessages(prev => [...prev, newMessage]);
+          assignedUserIds: result.assignedUserIds || []
+        } as Message]);
         closeTaskDrawer();
       } else {
-        const errorData = await response.text();
-        console.error('Server response:', errorData);
-        throw new Error(`Failed to send task message: ${response.status}`);
+        throw new Error('Failed to send task message');
       }
     } catch (error) {
       console.error('Error sending task message:', error);
-      alert('Failed to send task message. Please try again.');
+      alert('Failed to send task message');
     }
   };
 
@@ -1069,7 +1045,7 @@ const ChatApplication: React.FC = () => {
     );
   };
 
- const FileMessage = ({ message }: { message: Message }) => {
+  const FileMessage = ({ message }: { message: Message }) => {
     const handleDownload = () => {
       downloadFile(message.id, message.fileName || 'file');
     };
