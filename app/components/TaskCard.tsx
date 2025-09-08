@@ -7,7 +7,8 @@ export const TaskCard: React.FC<{
   columnId: TaskStatus;
   taskAssignments: TaskAssignments[];
   onEdit: (task: Task) => void;
-}> = ({ task, columnId, taskAssignments, onEdit }) => {
+  onDragStart: (task: Task, columnId: TaskStatus) => void;
+}> = ({ task, columnId, taskAssignments, onEdit, onDragStart }) => {
   const getPriorityColor = (priority: TaskPriority) => {
     switch (priority) {
       case TaskPriority.High: return 'bg-orange-100 text-orange-800 border-orange-200';
@@ -35,11 +36,20 @@ export const TaskCard: React.FC<{
 
   const isOverdue = task.DueDate ? new Date(task.DueDate) < new Date() && task.status !== TaskStatus.Done : false;
 
+  const handleDragStart = (e: React.DragEvent<HTMLDivElement>) => {
+    e.stopPropagation();
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', JSON.stringify({
+      taskId: task.id,
+      sourceColumn: columnId
+    }));
+    onDragStart(task, columnId);
+  };
+
   return (
     <div
       draggable
-      onDragStart={(e) => {
-      }}
+      onDragStart={handleDragStart}
       className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 hover:shadow-md transition-all duration-200 cursor-move group"
     >
       <div className="flex items-start justify-between mb-3">

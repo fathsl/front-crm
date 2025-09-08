@@ -1,5 +1,5 @@
 import { useAtomValue } from "jotai";
-import { AlertCircle, ArrowLeft, CheckCircle, Clock, DownloadIcon, Edit3, ExternalLink, FileIcon, FileText, MessageSquare, Mic, MoreVertical, Paperclip, Pause, Play, Plus, Search, Send, Share, Square, Trash2, Users, Volume2, X, XCircle } from "lucide-react";
+import { AlertCircle, ArrowLeft, CheckCircle, Clock, DownloadIcon, Edit3, ExternalLink, FileIcon, FileText, ListChecksIcon, MessageSquare, Mic, MoreVertical, Paperclip, Pause, Play, Plus, Search, Send, Share, Square, Trash2, Users, Volume2, X, XCircle } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react"; 
 import { formatFileSize, IDRIVE_CONFIG, MessageType, type SendMessageRequest, type User } from "~/help";
 import type { Client, CreateDiscussionRequest, Project } from "~/help";
@@ -8,6 +8,7 @@ import type { Message } from "~/help";
 import { userAtom } from "~/utils/userAtom";
 import { TaskMessage, TaskStatus } from "~/components/TaskMessage";
 import { TaskPriority } from '~/types/task';      
+import { useNavigate } from "react-router";
 
 interface MessageResponse {
   id: number;
@@ -99,6 +100,7 @@ const ChatApplication: React.FC = () => {
   const taskRecordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const [taskMediaRecorder, setTaskMediaRecorder] = useState<MediaRecorder | null>(null);
   const isRecordingCanceled = useRef(false);
+  const navigate = useNavigate();
   const baseUrl = "http://localhost:5178";
 
   const fetchUsers = async () => {
@@ -1351,16 +1353,28 @@ const ChatApplication: React.FC = () => {
               <div className="text-sm text-gray-500 mb-2 line-clamp-2">{discussion.description}</div>
               <div className="text-xs text-gray-400">{discussion.createdAt.toLocaleString()}</div>
               </div>
+              <div className="flex items-center gap-2 ml-4">
               <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDownloadExcel(discussion.id, discussion.title);
-                  }}
-                  className="ml-4 p-2 rounded-lg bg-green-500 hover:bg-green-600 text-white transition-colors duration-200 flex items-right justify-end"
-                  title="Download Tasks Excel"
-                >
-                  <DownloadIcon size={16} />
-                </button>
+                onClick={(e) => {
+                  e.stopPropagation();
+                  navigate(`/reports/${discussion.id}`);
+                }}
+                className="p-2 rounded-lg bg-blue-500 hover:bg-blue-600 text-white transition-colors duration-200 flex items-center justify-center"
+                title="View Tasks Report"
+              >
+                <ListChecksIcon size={16} />
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDownloadExcel(discussion.id, discussion.title);
+                }}
+                className="p-2 rounded-lg bg-green-500 hover:bg-green-600 text-white transition-colors duration-200 flex items-center justify-center"
+                title="Download Tasks Excel"
+              >
+                <DownloadIcon size={16} />
+              </button>
+            </div>
             </div>
           ))}
         </div>

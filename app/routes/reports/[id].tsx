@@ -1,10 +1,13 @@
+import { useAtomValue } from 'jotai';
 import { AlertCircle, Calendar, CheckCircle2, Eye, PlayCircle, Plus } from 'lucide-react';
 import { useEffect,useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useParams } from 'react-router';
 import { TaskCard } from '~/components/TaskCard';
 import TaskModal from '~/components/TaskModal';
 import type { Task as BaseTask, TaskAssignments, User } from '~/help';
 import { TaskStatus } from '~/types/task';
+import { userAtom } from '~/utils/userAtom';
 
 type TaskStatusRecord = {
   [TaskStatus.Backlog]: Task[];
@@ -20,6 +23,7 @@ interface Task extends BaseTask {
 
 export default function Reports() {
   const { t } = useTranslation();
+  const { id } = useParams();
 
   const [tasks, setTasks] = useState<TaskStatusRecord>({
     [TaskStatus.Backlog]: [],
@@ -32,11 +36,12 @@ export default function Reports() {
   const [users, setUsers] = useState<User[]>([]);
   const [taskAssignments, setTaskAssignments] = useState<TaskAssignments[]>([]);
   const [loading, setLoading] = useState(true);
+  const [draggedTask, setDraggedTask] = useState<(Task & { sourceColumn: TaskStatus }) | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<TaskStatus | null>(null);
-
+  const currentUser = useAtomValue(userAtom) as unknown as User;
   const columns: {
     id: TaskStatus;
     name: string;
@@ -89,10 +94,11 @@ export default function Reports() {
 
   const loadTasks = async () => {
     try {
-      const response = await fetch('http://localhost:5178/api/Task');
+      const response = await fetch(`http://localhost:5178/api/Chat/discussion/${id}/tasks-and-media`);
       if (response.ok) {
         const data = await response.json();
-
+        console.log('Raw API response:', data);
+  
         const tasksByStatus = {
           [TaskStatus.Backlog]: [],
           [TaskStatus.ToDo]: [],
@@ -112,23 +118,15 @@ export default function Reports() {
           'Done': TaskStatus.Done
         };
   
-        if (data.columns) {
-          data.columns.forEach((column: any) => {
-            const status = statusMap[String(column.status)] || TaskStatus.Backlog;
+        if (data.tasks && Array.isArray(data.tasks)) {
+          data.tasks.forEach((task: Task) => {
+            const status = statusMap[String(task.status)] || TaskStatus.Backlog;
             if (status in tasksByStatus) {
-              tasksByStatus[status] = column.tasks || [];
-            }
-          });
-        } else if (Array.isArray(data)) {
-          data.forEach((task: Task) => {
-            const numericStatus = task.status as unknown as number;
-            const status = statusMap[numericStatus] || TaskStatus.Backlog;
-            if (status in tasksByStatus) {
-              tasksByStatus[status as TaskStatus].push(task);
+              tasksByStatus[status].push(task);
             }
           });
         } else {
-          console.error('Unexpected data format:', data);
+          console.error('Unexpected data format - expected tasks array:', data);
         }
   
         console.log('Processed tasks by status:', tasksByStatus);
@@ -180,22 +178,25 @@ export default function Reports() {
     }
   };
 
-  const [draggedTask, setDraggedTask] = useState<{ id: number; sourceColumn: TaskStatus } | null>(null);
-
-  const handleDragStart = (task: Task, columnId: TaskStatus) => {
+  const handleDragStart = (task: Task, sourceColumn: TaskStatus) => {
     setDraggedTask({
-      id: task.id,
-      sourceColumn: columnId
+      ...task,
+      sourceColumn,
     });
   };
 
-  const handleDragOver = (e: React.DragEvent) => {
+  const handleDragOver = (e: React.DragEvent, columnId: TaskStatus) => {
     e.preventDefault();
+    if (draggedTask?.sourceColumn !== columnId) {
+      setDragOverColumn(columnId);
+    }
   };
 
   const handleDragEnter = (e: React.DragEvent, columnId: TaskStatus) => {
     e.preventDefault();
-    setDragOverColumn(columnId);
+    if (draggedTask?.sourceColumn !== columnId) {
+      setDragOverColumn(columnId);
+    }
   };
 
   const handleDragLeave = (e: React.DragEvent) => {
@@ -207,44 +208,65 @@ export default function Reports() {
   };
 
   const handleDrop = async (e: React.DragEvent, targetColumnId: TaskStatus) => {
-    if (!draggedTask) return;
     e.preventDefault();
     setDragOverColumn(null);
-
-    if (!draggedTask || draggedTask.sourceColumn === targetColumnId) return;
-
+    
     try {
-      const response = await fetch(`http://localhost:5178/api/tasks/${draggedTask.id}/status`, {
-        method: 'PATCH',
+      const data = e.dataTransfer.getData('text/plain');
+      if (!data) return;
+      
+      const { taskId, sourceColumn } = JSON.parse(data);
+      
+      if (sourceColumn === targetColumnId) return;
+      
+      const sourceTasks = [...tasks[sourceColumn as TaskStatus]];
+      const taskIndex = sourceTasks.findIndex(t => t.id === taskId);
+      
+      if (taskIndex === -1) return;
+      
+      const taskToMove = sourceTasks[taskIndex];
+      
+      if (!currentUser) {
+        console.error('Current user not available');
+        return;
+      }
+      const response = await fetch(`http://localhost:5178/api/Task/${taskToMove.id}/status`, {
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: targetColumnId })
+        body: JSON.stringify({
+          status: targetColumnId,
+          updatedByUserId: currentUser.userId
+        })
       });
-
-      if (response.ok && draggedTask) {
-        const newTasks = { ...tasks };
-        const sourceColumnTasks = newTasks[draggedTask.sourceColumn] || [];
-        newTasks[draggedTask.sourceColumn] = sourceColumnTasks.filter(
-          task => task.id !== draggedTask.id
-        );
-        
-        const taskToMove = tasks[draggedTask.sourceColumn]?.find(t => t.id === draggedTask.id);
-        if (!taskToMove) return;
-        
-        const targetColumnTasks = newTasks[targetColumnId] || [];
-        newTasks[targetColumnId] = [
-          ...targetColumnTasks,
-          {
-            ...taskToMove,
-            status: targetColumnId,
-            sourceColumn: targetColumnId
-          }
-        ];
-        setTasks(newTasks);
-      } else {
+  
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('Failed to update task status:', errorData);
         throw new Error('Failed to update task status');
       }
+      
+      const newTasks = { ...tasks };
+      
+      newTasks[sourceColumn as TaskStatus] = newTasks[sourceColumn as TaskStatus].filter(
+        task => task.id !== taskToMove.id
+      );
+      
+      newTasks[targetColumnId] = [
+        ...(newTasks[targetColumnId] || []),
+        {
+          ...taskToMove,
+          status: targetColumnId,
+          sourceColumn: targetColumnId
+        }
+      ];
+      
+      setTasks(newTasks);
+      console.log(`Task ${taskToMove.id} moved from ${sourceColumn} to ${targetColumnId}`);
+      
     } catch (error) {
       console.error('Error updating task status:', error);
+    } finally {
+      setDraggedTask(null);
     }
   };
 
@@ -380,99 +402,97 @@ export default function Reports() {
           </div>
         </div>
       </div>
-
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
-          {columns.map((column) => (
-            <div
-              key={column.id}
-              className={`rounded-2xl border-2 p-6 min-h-[600px] transition-all duration-300 ${column.color} ${
-                dragOverColumn === column.id 
-                  ? 'ring-4 ring-blue-400 ring-opacity-30 transform scale-105' 
-                  : 'hover:shadow-lg'
-              }`}
-              onDragOver={handleDragOver}
-              onDragEnter={(e) => handleDragEnter(e, column.id)}
-              onDragLeave={handleDragLeave}
-              onDrop={(e) => handleDrop(e, column.id)}
-            >
-              <div className="flex items-center justify-between mb-6">
-                <div className="flex items-center gap-3">
-                  <div className={`p-2 rounded-lg bg-white shadow-sm ${column.textColor}`}>
-                    {column.icon}
-                  </div>
-                  <div>
-                    <h2 className={`font-bold text-lg ${column.textColor}`}>
-                      {column.name}
-                    </h2>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full bg-white shadow-sm text-sm font-bold ${column.textColor}`}>
-                    {tasks[column.id]?.length || 0}
-                  </span>
-                </div>
+    
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
+        {columns.map((column) => (
+          <div
+            key={column.id}
+            className={`bg-white/50 backdrop-blur-sm rounded-2xl border ${column.color} p-4 transition-all duration-200 ${dragOverColumn === column.id ? 'ring-2 ring-offset-2 ring-offset-blue-100 ring-blue-500 scale-105' : ''}`}
+            onDragOver={(e) => handleDragOver(e, column.id)}
+            onDragEnter={(e) => handleDragEnter(e, column.id)}
+            onDragLeave={handleDragLeave}
+            onDrop={(e) => handleDrop(e, column.id)}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <span className={`${column.textColor}`}>
+                  {column.icon}
+                </span>
+                <h3 className="font-semibold text-gray-800">{column.name}</h3>
+                <span className="text-xs bg-white/50 text-gray-600 px-2 py-0.5 rounded-full">
+                  {tasks[column.id]?.length || 0}
+                </span>
               </div>
-              
-              <div className="space-y-4">
-                {(tasks[column.id] || []).map((task) => (
-                  <TaskCard
-                    key={task.id}
-                    task={task}
-                    columnId={column.id}
+              {column.id === TaskStatus.Backlog && (
+                <button
+                  onClick={() => setShowCreateModal(true)}
+                  className="text-gray-400 hover:text-blue-600 transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+            
+            <div className="space-y-3">
+              {tasks[column.id]?.map((task) => (
+                <div 
+                  key={task.id}
+                  draggable
+                  onDragStart={() => handleDragStart(task, column.id)}
+                  onDragOver={(e) => e.preventDefault()}
+                >
+                  <TaskCard 
+                    task={task} 
+                    columnId={column.id} 
                     taskAssignments={taskAssignments}
                     onEdit={handleEditTask}
                     onDragStart={handleDragStart}
                   />
-                ))}
-                
-                {(!tasks[column.id] || tasks[column.id].length === 0) && (
-                  <div className="flex flex-col items-center justify-center py-12 text-gray-400">
-                    <div className="w-16 h-16 rounded-full bg-white shadow-sm flex items-center justify-center mb-3">
-                      {column.icon}
-                    </div>
-                    <p className="text-sm font-medium">No tasks yet</p>
-                    <p className="text-xs">Drag tasks here or create new ones</p>
-                  </div>
-                )}
-              </div>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+          </div>
+        ))}
       </div>
-
-      <div className="fixed bottom-6 right-6 bg-white rounded-2xl shadow-lg border border-gray-200 p-4 min-w-[200px]">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-sm font-medium text-gray-700">Overall Progress</span>
-          <span className="text-sm font-bold text-gray-900">{getCompletionRate()}%</span>
+    </div>
+    
+    <div className="fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-sm border-t border-gray-200 py-2 px-4">
+      <div className="max-w-7xl mx-auto">
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-sm font-medium text-gray-700">Progress</span>
+          <span className="text-sm font-medium text-gray-700">{getCompletionRate()}%</span>
         </div>
         <div className="w-full bg-gray-200 rounded-full h-2">
-          <div
+          <div 
             className="bg-gradient-to-r from-green-500 to-emerald-500 h-2 rounded-full transition-all duration-500 ease-out"
             style={{ width: `${getCompletionRate()}%` }}
           ></div>
         </div>
       </div>
+    </div>
 
-      {showCreateModal &&
+    {showCreateModal && (
       <TaskModal
         isOpen={showCreateModal}
         onClose={() => setShowCreateModal(false)}
         onSubmit={createTask}
         title="Create New Task"
-      />}
+      />
+    )}
 
-      {showEditModal && editingTask &&
-      <TaskModal
+    {showEditModal && editingTask && (
+      <TaskModal 
         isOpen={showEditModal}
         onClose={() => {
           setShowEditModal(false);
           setEditingTask(null);
         }}
-        onSubmit={(taskData) => updateTask(editingTask.id, taskData)}
+        onSubmit={(taskData) => editingTask && updateTask(editingTask.id, taskData)}
         title="Edit Task"
         initialData={editingTask}
-      />}
-    </div>
-  );
+      />
+    )}
+  </div>
+);
 }
