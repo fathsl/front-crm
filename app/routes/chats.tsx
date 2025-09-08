@@ -6,8 +6,8 @@ import type { Client, CreateDiscussionRequest, Project } from "~/help";
 import type { Discussion } from "~/help";
 import type { Message } from "~/help";
 import { userAtom } from "~/utils/userAtom";
-import { TaskMessage } from "~/components/TaskMessage";
-import { TaskStatus, TaskPriority } from '~/types/task';      
+import { TaskMessage, TaskStatus } from "~/components/TaskMessage";
+import { TaskPriority } from '~/types/task';      
 
 interface MessageResponse {
   id: number;
@@ -1008,6 +1008,95 @@ const ChatApplication: React.FC = () => {
     setTaskContent('');
   };
 
+  const downloadTaskFile = async (taskId: number, messageId: number, fileName: string) => {
+    try {
+        const message = messages.find(m => m.id === messageId);
+        if (message?.fileUrl) {
+            window.open(message.fileUrl, '_blank');
+            return;
+        }
+
+        const response = await fetch(`${baseUrl}/api/Chat/messages/${messageId}/file`, {
+            method: 'GET'
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Failed to get download URL: ${errorText}`);
+        }
+
+        const data = await response.json();
+        const downloadUrl = data.fileUrl || data.idriveUrl;
+
+        if (downloadUrl) {
+            window.open(downloadUrl, '_blank');
+        } else {
+            throw new Error('No download URL available');
+        }
+    } catch (error) {
+        console.error('Error downloading task file:', error);
+        alert('Failed to download file. Please try again later.');
+    }
+  };
+  
+  const playTaskVoiceMessage = async (taskId: number, messageId: number, message: Message) => {
+    if (playingVoiceId === messageId) {
+      pauseVoiceMessage(message);
+      return;
+    }
+  
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+      URL.revokeObjectURL(audioRef.current.src);
+      audioRef.current = null;
+    }
+  
+    try {
+      let audioUrl: string;
+  
+      if (message.audioUrl) {
+        audioUrl = message.audioUrl;
+      } 
+      else if (message.audioBlob) {
+        console.log('Using local audioBlob');
+        audioUrl = URL.createObjectURL(message.audioBlob);
+      } 
+      else {
+        console.log(`Fetching task voice message for message ID: ${messageId}`);
+        
+        const response = await fetch(`${baseUrl}/api/Chat/messages/${messageId}/voice`, {
+          method: 'GET'
+        });
+  
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`Failed to fetch task voice message: ${errorText}`);
+        }
+  
+        const data = await response.json();
+        audioUrl = data.audioUrl || data.fileUrl || data.idriveUrl;
+        
+        if (!audioUrl) {
+          throw new Error('No audio URL available in the response');
+        }
+      }
+  
+      const audio = new Audio(audioUrl);
+      audioRef.current = audio;
+      setPlayingVoiceId(messageId);
+      
+      audio.onended = () => {
+        setPlayingVoiceId(null);
+      };
+  
+      await audio.play();
+    } catch (error) {
+      console.error('Error in playTaskVoiceMessage:', error);
+      alert('Failed to play voice message. Please try again later.');
+    }
+  };
+  
   const VoiceMessage = ({ message }: { message: Message }) => {
     const shareVoiceMessage = () => {
       if (message.idriveUrl) {
@@ -1322,13 +1411,17 @@ const ChatApplication: React.FC = () => {
                     id: message.id,
                     title: message.taskTitle || 'Untitled Task',
                     description: message.taskDescription || message.content,
-                    status: message.taskStatus || TaskStatus.Backlog,
+                    status: message.taskStatus as TaskStatus || TaskStatus.Backlog,
                     priority: message.taskPriority || TaskPriority.Medium,
                     dueDate: message.dueDate ? (typeof message.dueDate === 'string' ? message.dueDate : message.dueDate.toISOString()) : undefined,
                     assignedTo: message.senderName,
                     duration: message.duration,
-                    taskStatus: message.taskStatus || TaskStatus.Backlog,
-                    taskPriority: message.taskPriority || TaskPriority.Medium
+                    taskStatus: (message.taskStatus as TaskStatus) || TaskStatus.Backlog,
+                    taskPriority: message.taskPriority || TaskPriority.Medium,
+                    fileName: message.fileName,
+                    fileSize: message.fileSize,
+                    idriveUrl: message.idriveUrl,
+                    taskId: message.taskId
                   }}
                   onStatusChange={async (newStatus) => {
                     if (!currentUser) return;
@@ -1336,7 +1429,7 @@ const ChatApplication: React.FC = () => {
                       const response = await fetch(`${baseUrl}/api/Task/${message.taskId}/status`, {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ 
+                        body: JSON.stringify({
                           status: newStatus,
                           updatedByUserId: currentUser.userId
                         })
@@ -1352,8 +1445,8 @@ const ChatApplication: React.FC = () => {
                       console.error('Error updating task status:', error);
                     }
                   }}
-                  onPlayVoice={message.duration ? () => console.log('Playing voice') : undefined}
-                  isPlaying={false}
+                  onPlayVoice={message.duration ? () => playTaskVoiceMessage(message.taskId || 0, message.id, message) : undefined}
+                  onDownloadFile={message.fileName ? () => downloadTaskFile(message.taskId || 0, message.id, message.fileName!) : undefined}                  isPlaying={playingVoiceId === message.id}
                 />
                 ) : message.messageType === MessageType.Voice ? (
                   <div className={`bg-blue-500 text-white rounded-2xl p-4`}>
