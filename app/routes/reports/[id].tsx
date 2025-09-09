@@ -5,8 +5,8 @@ import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router';
 import { TaskCard } from '~/components/TaskCard';
 import TaskModal from '~/components/TaskModal';
-import type { Task as BaseTask, TaskAssignments, User } from '~/help';
-import { TaskStatus } from '~/types/task';
+import type { Task as BaseTask, Message, TaskAssignments, User } from '~/help';
+import { TaskPriority, TaskStatus } from '~/types/task';
 import { userAtom } from '~/utils/userAtom';
 
 type TaskStatusRecord = {
@@ -19,6 +19,45 @@ type TaskStatusRecord = {
 
 interface Task extends BaseTask {
   sourceColumn?: TaskStatus;
+}
+
+interface TaskFormData {
+  title: string;
+  description: string;
+  priority: string;
+  status: string;
+  dueDate: string;
+  estimatedTime: string;
+  assignedToUserId: number[];
+  sortOrder: number;
+}
+
+interface MessageResponse {
+  id: number;
+  discussionId: number;
+  senderId: number;
+  receiverId?: number | null;
+  content: string;
+  messageType: number;
+  taskId?: number;
+  taskTitle?: string;
+  taskDescription?: string | null;
+  taskStatus?: string;
+  taskPriority?: string;
+  dueDate?: string | null;
+  estimatedTime?: string | null;
+  sortOrder?: number;
+  assignedUserIds?: number[];
+  clientIds?: number[];
+  projectIds?: number[];
+  createdAt: string;
+  hasFile?: boolean;
+  fileName?: string | null;
+  mimeType?: string | null;
+  fileSize?: number | null;
+  fileReference?: string | null;
+  duration?: number | null;
+  audioUrl?: string | null;
 }
 
 export default function Reports() {
@@ -41,6 +80,7 @@ export default function Reports() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<TaskStatus | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
   const currentUser = useAtomValue(userAtom) as unknown as User;
   const columns: {
     id: TaskStatus;
@@ -270,33 +310,73 @@ export default function Reports() {
     }
   };
 
-  const createTask = async (taskData: any) => {
+  const createTask = async (discussionId: number, taskData: TaskFormData) => {
     try {
-      const response = await fetch('http://localhost:5178/api/Task', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...taskData,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        })
+      const requestBody = {
+        discussionId,
+        senderId: currentUser?.userId ?? 0,
+        content: taskData.title,
+        messageType: 3,
+        taskTitle: taskData.title,
+        taskDescription: taskData.description || null,
+        taskStatus: taskData.status || 'ToDo',
+        taskPriority: taskData.priority || 'Medium',
+        dueDate: taskData.dueDate ? new Date(taskData.dueDate).toISOString() : null,
+        estimatedTime: taskData.estimatedTime || null,
+        sortOrder: taskData.sortOrder || 0,
+        assignedUserIds: taskData.assignedToUserId || [],
+        clientIds: [],
+        projectIds: [],
+    };
+
+      console.log('Request body being sent:', JSON.stringify(requestBody, null, 2));
+
+      const response = await fetch(`http://localhost:5178/api/Chat/discussions/${discussionId}/create-task-with-message`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestBody)
       });
-      
+
       if (response.ok) {
-        const newTask = await response.json();
-        const taskStatus = (newTask.status as TaskStatus) || TaskStatus.Backlog;
-        
-        const newTasks = { ...tasks };
-        newTasks[taskStatus] = [...(newTasks[taskStatus] || []), newTask];
-        setTasks(newTasks);
-        setShowCreateModal(false);
+          const result: MessageResponse = await response.json();
+          const taskStatus = result.taskStatus || 'ToDo';
+          const newTasks = { ...tasks };
+          newTasks[taskStatus] = [...(newTasks[taskStatus] || []), {
+              id: result.taskId || 0,
+              title: result.taskTitle || '',
+              description: result.taskDescription || '',
+              status: (result.taskStatus as TaskStatus) || TaskStatus.ToDo,
+              priority: (result.taskPriority as TaskPriority) || TaskPriority.Medium,
+              DueDate: result.dueDate || '',
+              estimatedTime: result.estimatedTime || '',
+              SortOrder: result.sortOrder || 0,
+              createdByUserId: result.senderId,
+              assignedUsers: []
+          }];
+          setTasks(newTasks);
+          setMessages(prev => [...prev, {
+            id: result.id,
+            discussionId: result.discussionId,
+            senderId: result.senderId,
+            content: result.content,
+            messageType: result.messageType,
+            taskId: result.taskId ,
+            createdAt: new Date(result.createdAt),
+            assignedUserIds: result.assignedUserIds || [],
+            timestamp: new Date(result.createdAt).getTime(),
+          }]);
+          setShowCreateModal(false);
+
+          console.log(`Task and message created successfully with Task ID: ${result.taskId}, Message ID: ${result.id}, and linked to discussion ${discussionId}`);
       } else {
-        throw new Error('Failed to create task');
+          const errorData = await response.json();
+          console.error('Server error response:', errorData);
+          throw new Error(errorData.message || 'Failed to create task and message for discussion');
       }
-    } catch (error) {
-      console.error('Error creating task:', error);
-      alert('Failed to create task. Please try again.');
-    }
+      } catch (error: any) {
+          console.error('Error creating task for discussion:', error);
+          alert(error.message || 'Failed to create task. Please try again.');
+      }
   };
 
   const updateTask = async (taskId: number, taskData: Partial<Task>) => {
@@ -476,7 +556,7 @@ export default function Reports() {
       <TaskModal
         isOpen={showCreateModal}
         onClose={() => setShowCreateModal(false)}
-        onSubmit={createTask}
+        onSubmit={(taskData) => createTask(Number(id), taskData)}
         title="Create New Task"
       />
     )}

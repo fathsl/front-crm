@@ -1,7 +1,7 @@
 import { useAtomValue } from "jotai";
 import { AlertCircle, ArrowLeft, CheckCircle, Clock, DownloadIcon, Edit3, ExternalLink, FileIcon, FileText, ListChecksIcon, MessageSquare, Mic, MoreVertical, Paperclip, Pause, Play, Plus, Search, Send, Share, Square, Trash2, Users, Volume2, X, XCircle } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react"; 
-import { formatFileSize, IDRIVE_CONFIG, MessageType, type SendMessageRequest, type User } from "~/help";
+import { formatFileSize, type SendMessageRequest, type User } from "~/help";
 import type { Client, CreateDiscussionRequest, Project } from "~/help";
 import type { Discussion } from "~/help";
 import type { Message } from "~/help";
@@ -32,6 +32,13 @@ interface MessageResponse {
   duration?: number;
   createdAt: Date;
   timestamp: string;
+}
+
+enum MessageType {
+  Text = 1,
+  File = 2,
+  Task = 3,
+  Voice = 4,
 }
 
 const ChatApplication: React.FC = () => {
@@ -440,7 +447,7 @@ const ChatApplication: React.FC = () => {
       senderId: currentUser.userId,
       receiverId: selectedUser?.userId || 0,
       content: newMessage,
-      messageType: MessageType.Text
+      messageType: 1
     };
   
     try {
@@ -1419,7 +1426,7 @@ const ChatApplication: React.FC = () => {
                 }`}
               >        
               <div className={`max-w-xs sm:max-w-sm lg:max-w-md`}>
-                {message.messageType === MessageType.Task ? (
+                {message.messageType === 3 ? (
                   <TaskMessage 
                   task={{
                     id: message.id,
@@ -1462,11 +1469,11 @@ const ChatApplication: React.FC = () => {
                   onPlayVoice={message.duration ? () => playTaskVoiceMessage(message.taskId || 0, message.id, message) : undefined}
                   onDownloadFile={message.fileName ? () => downloadTaskFile(message.taskId || 0, message.id, message.fileName!) : undefined}                  isPlaying={playingVoiceId === message.id}
                 />
-                ) : message.messageType === MessageType.Voice ? (
+                ) : message.messageType === 4 ? (
                   <div className={`bg-blue-500 text-white rounded-2xl p-4`}>
                     <VoiceMessage message={message} />
                   </div>
-                ): message.messageType === MessageType.File ? (
+                ): message.messageType === 2 ? (
                   <div>
                     <FileMessage message={message} />
                   </div>
@@ -1478,7 +1485,7 @@ const ChatApplication: React.FC = () => {
                 <div className={`text-xs text-gray-400 mt-1`}>
                   {message.createdAt?.toLocaleString()}
                 </div>
-                {message.senderId === currentUser?.userId && (message.messageType === MessageType.Text || message.messageType === MessageType.Voice) && (
+                {message.senderId === currentUser?.userId && (message.messageType === 1 || message.messageType === 4) && (
                     <div className="flex space-x-2 mt-2 text-xs opacity-75">
                       <button
                         onClick={() => {

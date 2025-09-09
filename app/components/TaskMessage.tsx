@@ -165,7 +165,11 @@ export const TaskMessage = ({
     : TaskPriority.Medium;
   const currentPriorityConfig = priorityConfig[taskPriority] || priorityConfig[TaskPriority.Medium];
 
-  const statusOptions = Object.entries(statusConfig);
+  // Get status options using the TaskStatus enum to ensure no duplicates
+  const statusOptions = Object.values(TaskStatus).map(status => ({
+    status,
+    ...(statusConfig as any)[status]
+  }));
   const visibleStatuses = showAllStatuses ? statusOptions : statusOptions.slice(0, 3);
 
   return (
@@ -272,46 +276,24 @@ export const TaskMessage = ({
           </div>
           
           <div className="grid grid-cols-3 gap-2">
-            {visibleStatuses.map(([value, config]) => (
+            {statusOptions.slice(0, showAllStatuses ? statusOptions.length : 3).map((statusOption) => (
               <button
-                key={value}
-                onClick={() => handleStatusClick(value as TaskStatus)}
-                disabled={isUpdating || value === currentStatus}
+                key={statusOption.status}
+                onClick={() => handleStatusClick(statusOption.status)}
+                disabled={isUpdating || statusOption.status === currentStatus}
                 className={`p-2.5 rounded-lg transition-all text-center ${
-                  value === currentStatus
-                    ? `${config.color} border cursor-default`
+                  statusOption.status === currentStatus
+                    ? `${statusOption.color} border cursor-default`
                     : 'bg-gray-50 hover:bg-gray-100 text-gray-600 border border-transparent hover:border-gray-200'
                 } ${isUpdating ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
               >
                 <div className="flex flex-col items-center gap-1">
-                  <config.icon className="w-4 h-4" />
-                  <span className="text-xs font-medium leading-none">{config.label}</span>
+                  <statusOption.icon className="w-4 h-4" />
+                  <span className="text-xs font-medium leading-none">{statusOption.label}</span>
                 </div>
               </button>
             ))}
           </div>
-
-          {showAllStatuses && statusOptions.length > 3 && (
-            <div className="grid grid-cols-3 gap-2 mt-2">
-              {statusOptions.slice(3).map(([value, config]) => (
-                <button
-                  key={value}
-                  onClick={() => handleStatusClick(value as TaskStatus)}
-                  disabled={isUpdating || value === currentStatus}
-                  className={`p-2.5 rounded-lg transition-all text-center ${
-                    value === currentStatus
-                      ? `${config.color} border cursor-default`
-                      : 'bg-gray-50 hover:bg-gray-100 text-gray-600 border border-transparent hover:border-gray-200'
-                  } ${isUpdating ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-                >
-                  <div className="flex flex-col items-center gap-1">
-                    <config.icon className="w-4 h-4" />
-                    <span className="text-xs font-medium leading-none">{config.label}</span>
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
         </div>
       </div>
     </div>
