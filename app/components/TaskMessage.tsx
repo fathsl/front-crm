@@ -165,12 +165,10 @@ export const TaskMessage = ({
     : TaskPriority.Medium;
   const currentPriorityConfig = priorityConfig[taskPriority] || priorityConfig[TaskPriority.Medium];
 
-  // Get status options using the TaskStatus enum to ensure no duplicates
   const statusOptions = Object.values(TaskStatus).map(status => ({
     status,
     ...(statusConfig as any)[status]
   }));
-  const visibleStatuses = showAllStatuses ? statusOptions : statusOptions.slice(0, 3);
 
   return (
     <div className="w-full bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">

@@ -48,9 +48,9 @@ export interface Task {
     id: number;
     title: string;
     description: string;
-    priority: TaskPriority;
-    status: TaskStatus;
-    DueDate?: string | null;
+    priority: string;
+    status: string;
+    dueDate?: Date | null;
     estimatedTime?: string;
     SortOrder?: number;
     createdByUserId?: number;

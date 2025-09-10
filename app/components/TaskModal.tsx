@@ -12,17 +12,17 @@ interface TaskModalProps {
 }
 
 const TaskModal: React.FC<TaskModalProps> = ({ 
-  isOpen, 
-  onClose, 
-  onSubmit, 
-  title, 
-  initialData 
+  isOpen,
+  onClose,
+  onSubmit,
+  title,
+  initialData
 }) => {
   interface TaskFormData {
     title: string;
     description: string;
-    priority: TaskPriority;
-    status: TaskStatus;
+    priority: string;
+    status: string;
     dueDate: string;
     estimatedTime: string;
     assignedToUserId: number[];
@@ -31,8 +31,8 @@ const TaskModal: React.FC<TaskModalProps> = ({
   const [formData, setFormData] = useState<TaskFormData>({
     title: '',
     description: '',
-    priority: TaskPriority.Medium,
-    status: TaskStatus.ToDo,
+    priority: 'Medium',
+    status: 'ToDo',
     dueDate: '',
     estimatedTime: '',
     assignedToUserId: []
@@ -45,9 +45,9 @@ const TaskModal: React.FC<TaskModalProps> = ({
       setFormData({
         title: initialData.title || '',
         description: initialData.description || '',
-        priority: initialData.priority || TaskPriority.Medium,
-        status: initialData.status || TaskStatus.ToDo,
-        dueDate: initialData.DueDate ? new Date(initialData.DueDate).toISOString().split('T')[0] : '',
+        priority: initialData.priority || 'Medium',
+        status: initialData.status || 'ToDo',
+        dueDate: initialData.dueDate ? new Date(initialData.dueDate).toISOString().split('T')[0] : '',
         estimatedTime: initialData.estimatedTime || '',
         assignedToUserId: initialData.assignedUsers ? initialData.assignedUsers.map(user => user.userId) : []
       });
@@ -55,8 +55,8 @@ const TaskModal: React.FC<TaskModalProps> = ({
       setFormData({
         title: '',
         description: '',
-        priority: TaskPriority.Medium,
-        status: TaskStatus.ToDo,
+        priority: 'Medium',
+        status: 'ToDo',
         dueDate: '',
         estimatedTime: '',
         assignedToUserId: []
@@ -86,7 +86,7 @@ const TaskModal: React.FC<TaskModalProps> = ({
     const { name, value } = e.target;
     setFormData(prev => ({
       ...prev,
-      [name]: name === 'priority' || name === 'status' ? parseInt(value) : value
+      [name]: value
     }));
   };
 
@@ -146,9 +146,9 @@ const TaskModal: React.FC<TaskModalProps> = ({
                 onChange={handleChange}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               >
-                <option value={TaskPriority.Low}>Low</option>
-                <option value={TaskPriority.Medium}>Medium</option>
-                <option value={TaskPriority.High}>High</option>
+                <option value="0">Low</option>
+                <option value="1">Medium</option>
+                <option value="2">High</option>
               </select>
             </div>
 
@@ -183,18 +183,19 @@ const TaskModal: React.FC<TaskModalProps> = ({
               />
             </div>
 
-            {/* Estimated Time */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Estimated Time
               </label>
               <input
-                type="text"
+                type="number"
                 name="estimatedTime"
                 value={formData.estimatedTime}
                 onChange={handleChange}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="e.g., 2 hours, 1 day"
+                placeholder="e.g., 2 (in hours)"
+                min="0"
+                step="0.5"
               />
             </div>
 

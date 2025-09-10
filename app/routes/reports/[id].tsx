@@ -26,8 +26,8 @@ interface TaskFormData {
   description: string;
   priority: string;
   status: string;
-  dueDate: string;
-  estimatedTime: string;
+  dueDate?: string | Date;
+  estimatedTime?: string;
   assignedToUserId: number[];
   sortOrder: number;
 }
@@ -44,7 +44,7 @@ interface MessageResponse {
   taskDescription?: string | null;
   taskStatus?: string;
   taskPriority?: string;
-  dueDate?: string | null;
+  dueDate?: Date | null;
   estimatedTime?: string | null;
   sortOrder?: number;
   assignedUserIds?: number[];
@@ -322,7 +322,7 @@ export default function Reports() {
         taskStatus: taskData.status || 'ToDo',
         taskPriority: taskData.priority || 'Medium',
         dueDate: taskData.dueDate ? new Date(taskData.dueDate).toISOString() : null,
-        estimatedTime: taskData.estimatedTime || null,
+        estimatedTime: taskData.estimatedTime ? parseFloat(taskData.estimatedTime) : null,
         sortOrder: taskData.sortOrder || 0,
         assignedUserIds: taskData.assignedToUserId || [],
         clientIds: [],
@@ -347,7 +347,7 @@ export default function Reports() {
               description: result.taskDescription || '',
               status: (result.taskStatus as TaskStatus) || TaskStatus.ToDo,
               priority: (result.taskPriority as TaskPriority) || TaskPriority.Medium,
-              DueDate: result.dueDate || '',
+              dueDate: result.dueDate || new Date(),
               estimatedTime: result.estimatedTime || '',
               SortOrder: result.sortOrder || 0,
               createdByUserId: result.senderId,
@@ -379,41 +379,48 @@ export default function Reports() {
       }
   };
 
-  const updateTask = async (taskId: number, taskData: Partial<Task>) => {
+  const updateTask = async (taskId: number, taskData: TaskFormData) => {
     try {
-      const response = await fetch(`http://localhost:5178/api/Task/${taskId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...taskData,
-          updatedAt: new Date().toISOString()
-        })
-      });
-      
-      if (response.ok) {
-        const updatedTask = await response.json();
-        
-        const newTasks = { ...tasks };
-        Object.values(TaskStatus).forEach(status => {
-          if (typeof status === 'number') {
-            newTasks[status as TaskStatus] = newTasks[status as TaskStatus].filter(task => 
-              task.id !== taskId
-            );
-          }
+        const requestBody = {
+            title: taskData.title,
+            description: taskData.description || null,
+            status: taskData.status || 'ToDo',
+            priority: taskData.priority || 'Medium',
+            dueDate: taskData.dueDate ? new Date(taskData.dueDate).toISOString() : null,
+            estimatedTime: taskData.estimatedTime ? parseFloat(taskData.estimatedTime) : null,
+            sortOrder: taskData.sortOrder || 0,
+            assignedUserIds: taskData.assignedToUserId || [],
+            updatedByUserId: currentUser?.userId ?? 0
+        };
+
+        console.log('Update request body:', JSON.stringify(requestBody, null, 2));
+
+        const response = await fetch(`http://localhost:5178/api/Tasks/${taskId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(requestBody)
         });
-        const taskStatus = updatedTask.status as TaskStatus;
-        newTasks[taskStatus] = [...(newTasks[taskStatus] || []), updatedTask];
-        
-        setTasks(newTasks);
-        setShowEditModal(false);
-        setEditingTask(null);
-      } else {
-        throw new Error('Failed to update task');
+
+        if (response.ok) {
+            const result = await response.json();
+            setTasks((prevTasks) => {
+                const updatedTasks = { ...prevTasks };
+                const taskStatus = result.status || 'ToDo';
+                updatedTasks[taskStatus] = updatedTasks[taskStatus].map(task =>
+                    task.id === taskId ? { ...task, ...result } : task
+                );
+                return updatedTasks;
+            });
+            console.log(`Task updated successfully with ID: ${taskId}`);
+        } else {
+            const errorData = await response.json();
+            console.error('Server error response:', errorData);
+            throw new Error(errorData.message || 'Failed to update task');
+        }
+      } catch (error: any) {
+          console.error('Error updating task:', error);
+          alert(error.message || 'Failed to update task. Please try again.');
       }
-    } catch (error) {
-      console.error('Error updating task:', error);
-      alert('Failed to update task. Please try again.');
-    }
   };
 
   const handleEditTask = (task: Task) => {
