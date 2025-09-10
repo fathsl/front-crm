@@ -6,16 +6,8 @@ import { useParams } from 'react-router';
 import { TaskCard } from '~/components/TaskCard';
 import TaskModal from '~/components/TaskModal';
 import type { Task as BaseTask, Message, TaskAssignments, User } from '~/help';
-import { TaskPriority, TaskStatus } from '~/types/task';
+import { TaskStatus, TaskPriority } from '~/types/task';
 import { userAtom } from '~/utils/userAtom';
-
-type TaskStatusRecord = {
-  [TaskStatus.Backlog]: Task[];
-  [TaskStatus.ToDo]: Task[];
-  [TaskStatus.InProgress]: Task[];
-  [TaskStatus.InReview]: Task[];
-  [TaskStatus.Done]: Task[];
-};
 
 interface Task extends BaseTask {
   sourceColumn?: TaskStatus;
@@ -64,12 +56,12 @@ export default function Reports() {
   const { t } = useTranslation();
   const { id } = useParams();
 
-  const [tasks, setTasks] = useState<TaskStatusRecord>({
+  const [tasks, setTasks] = useState<Record<TaskStatus, Task[]>>({
     [TaskStatus.Backlog]: [],
     [TaskStatus.ToDo]: [],
     [TaskStatus.InProgress]: [],
     [TaskStatus.InReview]: [],
-    [TaskStatus.Done]: []
+    [TaskStatus.Done]: [],
   });
   const [taskId, setTaskId] = useState<number | null>(null);
   const [users, setUsers] = useState<User[]>([]);
@@ -132,6 +124,22 @@ export default function Reports() {
     loadAllTaskAssignments();
   }, []);
 
+  const mapStatus = (status: string | number): TaskStatus => {
+    const statusMap: Record<string, TaskStatus> = {
+      'Backlog': TaskStatus.Backlog,
+      'ToDo': TaskStatus.ToDo,
+      'InProgress': TaskStatus.InProgress,
+      'InReview': TaskStatus.InReview,
+      'Done': TaskStatus.Done,
+      '0': TaskStatus.Backlog,
+      '1': TaskStatus.ToDo,
+      '2': TaskStatus.InProgress,
+      '3': TaskStatus.InReview,
+      '4': TaskStatus.Done
+    };
+    return statusMap[String(status)] || TaskStatus.ToDo;
+  };
+
   const loadTasks = async () => {
     try {
       const response = await fetch(`http://localhost:5178/api/Chat/discussion/${id}/tasks-and-media`);
@@ -145,28 +153,33 @@ export default function Reports() {
           [TaskStatus.InProgress]: [],
           [TaskStatus.InReview]: [],
           [TaskStatus.Done]: [],
-        } as unknown as Record<TaskStatus, Task[]>;
-  
-        const statusMap: Record<string, TaskStatus> = {
-          '1': TaskStatus.ToDo,
-          '2': TaskStatus.InProgress,
-          '3': TaskStatus.InReview,
-          '4': TaskStatus.Done,
-          'ToDo': TaskStatus.ToDo,
-          'InProgress': TaskStatus.InProgress,
-          'InReview': TaskStatus.InReview,
-          'Done': TaskStatus.Done
-        };
+        } as Record<TaskStatus, Task[]>;
   
         if (data.tasks && Array.isArray(data.tasks)) {
-          data.tasks.forEach((task: Task) => {
-            const status = statusMap[String(task.status)] || TaskStatus.Backlog;
+          data.tasks.forEach((task: any) => {
+            const statusValue = typeof task.status === 'number' ? 
+              Object.values(TaskStatus)[task.status] : task.status;
+            const priorityValue = typeof task.priority === 'number' ? 
+              Object.values(TaskPriority)[task.priority] : task.priority;
+  
+            const status = statusValue as TaskStatus || TaskStatus.ToDo;
+            let priority: TaskPriority;
+            if (typeof task.priority === 'number') {
+              const priorityNames = ['Low', 'Medium', 'High'];
+              priority = priorityNames[task.priority] as TaskPriority || TaskPriority.Medium;
+            } else {
+              priority = task.priority as TaskPriority || TaskPriority.Medium;
+            }
+  
             if (status in tasksByStatus) {
-              tasksByStatus[status].push(task);
+              tasksByStatus[status].push({
+                ...task,
+                status: status,
+                priority: priority,
+                dueDate: task.dueDate ? new Date(task.dueDate) : null
+              });
             }
           });
-        } else {
-          console.error('Unexpected data format - expected tasks array:', data);
         }
   
         console.log('Processed tasks by status:', tasksByStatus);
@@ -218,10 +231,10 @@ export default function Reports() {
     }
   };
 
-  const handleDragStart = (task: Task, sourceColumn: TaskStatus) => {
+  const handleDragStart = (task: Task, columnId: TaskStatus) => {
     setDraggedTask({
       ...task,
-      sourceColumn,
+      sourceColumn: columnId,
     });
   };
 
@@ -319,42 +332,44 @@ export default function Reports() {
         messageType: 3,
         taskTitle: taskData.title,
         taskDescription: taskData.description || null,
-        taskStatus: taskData.status || 'ToDo',
-        taskPriority: taskData.priority || 'Medium',
+        taskStatus: taskData.status || TaskStatus.ToDo,
+        taskPriority: taskData.priority || TaskPriority.Medium,
         dueDate: taskData.dueDate ? new Date(taskData.dueDate).toISOString() : null,
-        estimatedTime: taskData.estimatedTime ? parseFloat(taskData.estimatedTime) : null,
+        estimatedTime: taskData.estimatedTime || null,
         sortOrder: taskData.sortOrder || 0,
         assignedUserIds: taskData.assignedToUserId || [],
         clientIds: [],
         projectIds: [],
-    };
-
-      console.log('Request body being sent:', JSON.stringify(requestBody, null, 2));
-
+      };
+  
       const response = await fetch(`http://localhost:5178/api/Chat/discussions/${discussionId}/create-task-with-message`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(requestBody)
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody)
       });
-
+  
       if (response.ok) {
-          const result: MessageResponse = await response.json();
-          const taskStatus = result.taskStatus || 'ToDo';
-          const newTasks = { ...tasks };
-          newTasks[taskStatus] = [...(newTasks[taskStatus] || []), {
-              id: result.taskId || 0,
-              title: result.taskTitle || '',
-              description: result.taskDescription || '',
-              status: (result.taskStatus as TaskStatus) || TaskStatus.ToDo,
-              priority: (result.taskPriority as TaskPriority) || TaskPriority.Medium,
-              dueDate: result.dueDate || new Date(),
-              estimatedTime: result.estimatedTime || '',
-              SortOrder: result.sortOrder || 0,
-              createdByUserId: result.senderId,
-              assignedUsers: []
-          }];
-          setTasks(newTasks);
-          setMessages(prev => [...prev, {
+        const result: MessageResponse = await response.json();
+        const taskStatus = mapStatus(result.taskStatus || TaskStatus.ToDo);
+        
+        const newTasks = { ...tasks };
+        if (!newTasks[taskStatus]) {
+          newTasks[taskStatus] = [];
+        }
+        
+        newTasks[taskStatus] = [...newTasks[taskStatus], {
+          id: result.taskId || 0,
+          title: result.taskTitle || '',
+          description: result.taskDescription || '',
+          status: taskStatus,
+          priority: result.taskPriority as TaskPriority || TaskPriority.Medium,
+          dueDate: result.dueDate ? new Date(result.dueDate) : null,
+          estimatedTime: result.estimatedTime || '',
+          SortOrder: result.sortOrder || 0,
+          createdByUserId: result.senderId,
+          assignedUsers: []
+        }];
+        setMessages(prev => [...prev, {
             id: result.id,
             discussionId: result.discussionId,
             senderId: result.senderId,
@@ -364,10 +379,10 @@ export default function Reports() {
             createdAt: new Date(result.createdAt),
             assignedUserIds: result.assignedUserIds || [],
             timestamp: new Date(result.createdAt).getTime(),
-          }]);
-          setShowCreateModal(false);
+        }]);
+        setShowCreateModal(false);
 
-          console.log(`Task and message created successfully with Task ID: ${result.taskId}, Message ID: ${result.id}, and linked to discussion ${discussionId}`);
+        console.log(`Task and message created successfully with Task ID: ${result.taskId}, Message ID: ${result.id}, and linked to discussion ${discussionId}`);
       } else {
           const errorData = await response.json();
           console.error('Server error response:', errorData);
@@ -381,46 +396,67 @@ export default function Reports() {
 
   const updateTask = async (taskId: number, taskData: TaskFormData) => {
     try {
-        const requestBody = {
-            title: taskData.title,
-            description: taskData.description || null,
-            status: taskData.status || 'ToDo',
-            priority: taskData.priority || 'Medium',
-            dueDate: taskData.dueDate ? new Date(taskData.dueDate).toISOString() : null,
-            estimatedTime: taskData.estimatedTime ? parseFloat(taskData.estimatedTime) : null,
-            sortOrder: taskData.sortOrder || 0,
-            assignedUserIds: taskData.assignedToUserId || [],
-            updatedByUserId: currentUser?.userId ?? 0
-        };
-
-        console.log('Update request body:', JSON.stringify(requestBody, null, 2));
-
-        const response = await fetch(`http://localhost:5178/api/Tasks/${taskId}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(requestBody)
+      const requestBody = {
+        title: taskData.title,
+        description: taskData.description || null,
+        status: taskData.status || TaskStatus.ToDo,
+        priority: taskData.priority || TaskPriority.Medium,
+        dueDate: taskData.dueDate ? new Date(taskData.dueDate).toISOString() : null,
+        estimatedTime: taskData.estimatedTime || null,
+        sortOrder: taskData.sortOrder || 0,
+        assignedUserIds: taskData.assignedToUserId || [],
+        updatedByUserId: currentUser?.userId ?? 0
+      };
+  
+      const response = await fetch(`http://localhost:5178/api/Tasks/${taskId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody)
+      });
+  
+      if (response.ok) {
+        const result = await response.json();
+        setTasks(prevTasks => {
+          const updatedTasks: Record<TaskStatus, Task[]> = {
+            [TaskStatus.Backlog]: [...prevTasks[TaskStatus.Backlog]],
+            [TaskStatus.ToDo]: [...prevTasks[TaskStatus.ToDo]],
+            [TaskStatus.InProgress]: [...prevTasks[TaskStatus.InProgress]],
+            [TaskStatus.InReview]: [...prevTasks[TaskStatus.InReview]],
+            [TaskStatus.Done]: [...prevTasks[TaskStatus.Done]]
+          };
+  
+          (Object.keys(updatedTasks) as TaskStatus[]).forEach(status => {
+            updatedTasks[status] = updatedTasks[status].filter(t => t.id !== taskId);
+          });
+  
+          const taskStatus = mapStatus(result.status);
+          const priority = Object.values(TaskPriority).includes(result.priority) 
+            ? result.priority as TaskPriority
+            : TaskPriority.Medium;
+            
+          updatedTasks[taskStatus] = [
+            ...updatedTasks[taskStatus],
+            {
+              ...result,
+              status: taskStatus,
+              priority: priority,
+              dueDate: result.dueDate ? new Date(result.dueDate) : null
+            }
+          ];
+  
+          return updatedTasks;
         });
-
-        if (response.ok) {
-            const result = await response.json();
-            setTasks((prevTasks) => {
-                const updatedTasks = { ...prevTasks };
-                const taskStatus = result.status || 'ToDo';
-                updatedTasks[taskStatus] = updatedTasks[taskStatus].map(task =>
-                    task.id === taskId ? { ...task, ...result } : task
-                );
-                return updatedTasks;
-            });
-            console.log(`Task updated successfully with ID: ${taskId}`);
-        } else {
-            const errorData = await response.json();
-            console.error('Server error response:', errorData);
-            throw new Error(errorData.message || 'Failed to update task');
-        }
-      } catch (error: any) {
-          console.error('Error updating task:', error);
-          alert(error.message || 'Failed to update task. Please try again.');
+        
+        setShowEditModal(false);
+        setEditingTask(null);
+      } else {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to update task');
       }
+    } catch (error: any) {
+      console.error('Error updating task:', error);
+      alert(error.message || 'Failed to update task. Please try again.');
+    }
   };
 
   const handleEditTask = (task: Task) => {

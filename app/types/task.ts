@@ -1,19 +1,17 @@
-export type TaskStatus = 'Backlog' | 'ToDo' | 'InProgress' | 'InReview' | 'Done';
 
-export const TaskStatus = {
-  Backlog: 'Backlog' as TaskStatus,
-  ToDo: 'ToDo' as TaskStatus,
-  InProgress: 'InProgress' as TaskStatus,
-  InReview: 'InReview' as TaskStatus,
-  Done: 'Done' as TaskStatus
-};
+export enum TaskStatus {
+  Backlog = 'Backlog',
+  ToDo = 'ToDo',
+  InProgress = 'InProgress',
+  InReview = 'InReview',
+  Done = 'Done'
+}
 
 export enum TaskPriority {
   Low = 'Low',
   Medium = 'Medium',
-  High = 'High'
+  High = 'High',
 }
-
 export interface TaskMessage {
   id: number;
   content: string;

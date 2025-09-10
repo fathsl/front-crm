@@ -40,13 +40,15 @@ const TaskModal: React.FC<TaskModalProps> = ({
 
   const [loading, setLoading] = useState(false);
 
+  console.log(formData.priority);
+
   useEffect(() => {
     if (initialData) {
       setFormData({
         title: initialData.title || '',
         description: initialData.description || '',
-        priority: initialData.priority || 'Medium',
-        status: initialData.status || 'ToDo',
+        priority: initialData.priority?.toString() || 'Medium',
+        status: initialData.status?.toString() || 'ToDo',
         dueDate: initialData.dueDate ? new Date(initialData.dueDate).toISOString().split('T')[0] : '',
         estimatedTime: initialData.estimatedTime || '',
         assignedToUserId: initialData.assignedUsers ? initialData.assignedUsers.map(user => user.userId) : []

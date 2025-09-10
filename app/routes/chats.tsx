@@ -110,6 +110,15 @@ const ChatApplication: React.FC = () => {
   const navigate = useNavigate();
   const baseUrl = "http://localhost:5178";
 
+  const getPriorityFromNumber = (priorityNum: number): TaskPriority => {
+    const priorityMap = {
+      0: TaskPriority.Low,
+      1: TaskPriority.Medium,
+      2: TaskPriority.High
+    };
+    return priorityMap[priorityNum as keyof typeof priorityMap] || TaskPriority.Medium;
+  };
+
   const fetchUsers = async () => {
     try {
       setLoading(true);
@@ -1433,7 +1442,9 @@ const ChatApplication: React.FC = () => {
                     title: message.taskTitle || 'Untitled Task',
                     description: message.taskDescription || message.content,
                     status: message.taskStatus as TaskStatus || TaskStatus.Backlog,
-                    priority: message.taskPriority || TaskPriority.Medium,
+                    priority: typeof message.taskPriority === 'number' 
+                    ? getPriorityFromNumber(message.taskPriority)
+                    : (message.taskPriority as TaskPriority) || TaskPriority.Medium,
                     dueDate: message.dueDate ? (typeof message.dueDate === 'string' ? message.dueDate : message.dueDate.toISOString()) : undefined,
                     assignedTo: message.senderName,
                     duration: message.duration,

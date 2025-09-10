@@ -1,28 +1,28 @@
 import { AlertCircle, Calendar, Clock, Edit2, Edit3, Flag, MoreVertical, Trash2 } from "lucide-react";
 import type { Task, TaskAssignments } from "~/help";
-import { TaskPriority, TaskStatus } from "~/types/task";
+import { TaskStatus } from "~/types/task";
 
 export const TaskCard: React.FC<{
   task: Task;
   columnId: TaskStatus;
   taskAssignments: TaskAssignments[];
   onEdit: (task: Task) => void;
-  onDragStart: (task: Task, columnId: TaskStatus) => void;
+  onDragStart: (task: Task, sourceColumn: TaskStatus) => void;
 }> = ({ task, columnId, taskAssignments, onEdit, onDragStart }) => {
-  const getPriorityColor = (priority: TaskPriority) => {
+  const getPriorityColor = (priority: string) => {
     switch (priority) {
-      case TaskPriority.High: return 'bg-orange-100 text-orange-800 border-orange-200';
-      case TaskPriority.Medium: return 'bg-yellow-100 text-yellow-800 border-yellow-200';
-      case TaskPriority.Low: return 'bg-green-100 text-green-800 border-green-200';
+      case 'High': return 'bg-orange-100 text-orange-800 border-orange-200';
+      case 'Medium': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+      case 'Low': return 'bg-green-100 text-green-800 border-green-200';
       default: return 'bg-gray-100 text-gray-800 border-gray-200';
     }
   };
 
-  const getPriorityIcon = (priority: TaskPriority) => {
+  const getPriorityIcon = (priority: string) => {
     switch (priority) {
-      case TaskPriority.Low: return <AlertCircle className="w-3 h-3" />;
-      case TaskPriority.Medium: return <AlertCircle className="w-3 h-3" />;
-      case TaskPriority.High: return <AlertCircle className="w-3 h-3" />;
+      case 'Low': return <AlertCircle className="w-3 h-3" />;
+      case 'Medium': return <AlertCircle className="w-3 h-3" />;
+      case 'High': return <AlertCircle className="w-3 h-3" />;
       default: return null;
     }
   };
@@ -34,7 +34,7 @@ export const TaskCard: React.FC<{
     });
   };
 
-  const isOverdue = task.DueDate ? new Date(task.DueDate) < new Date() && task.status !== TaskStatus.Done : false;
+  const isOverdue = task.dueDate ? new Date(task.dueDate) < new Date() && task.status !== TaskStatus.Done : false;
 
   const handleDragStart = (e: React.DragEvent<HTMLDivElement>) => {
     e.stopPropagation();
@@ -74,10 +74,10 @@ export const TaskCard: React.FC<{
       )}
 
       <div className="space-y-2">
-        {task.DueDate && (
+        {task.dueDate && (
           <div className={`flex items-center gap-2 text-xs ${isOverdue ? 'text-red-600' : 'text-gray-500'}`}>
             <Calendar className="w-3 h-3" />
-            <span className={isOverdue ? 'font-medium' : ''}>{formatDate(task.DueDate || '')}</span>
+            <span className={isOverdue ? 'font-medium' : ''}>{formatDate(task.dueDate || '')}</span>
           </div>
         )}
         
