@@ -48,7 +48,7 @@ export interface Task {
     id: number;
     title: string;
     description: string;
-    priority: string;
+    priority: TaskPriority | number;
     status: string;
     dueDate?: Date | null;
     estimatedTime?: string;
@@ -57,7 +57,12 @@ export interface Task {
     updatedByUserId?: number | null;
     createdAt?: string | Date;
     updatedAt?: string | Date;
+    clientIds: number[];
+    projectIds: number[];
     assignedUsers?: User[];
+    fileUrl?: string;
+    fileName?: string;
+    voiceUrl?: string;
 }
 
 export interface TaskAssignments {
@@ -238,6 +243,17 @@ export interface Message {
     description?: string;
 }
 
+export interface Resource {
+    id: number;
+    client_id: number;
+    title: string;
+    description: string;
+    fileUrl: string;
+    voiceUrl: string;
+    createdAt: Date;
+    createdBy: number;
+}
+
 export interface Chat {
     id: number;
     participants: number[];
@@ -249,18 +265,25 @@ export interface Chat {
 }
 
 export interface Client {
-    id: number;
-    first_name: string;
-    last_name: string;
-    phone: string;
-    email: string;
-    details: string;
-    country: string;
-    createdAt: Date;
-    updatedAt: Date;
-    createdBy : number;
-    updatedBy : number;
+  id: number;
+  first_name: string;
+  last_name: string;
+  phone: string;
+  email: string;
+  details: string;
+  country: string;
+  createdAt: Date;
+  imageUrl: string;
+  city: string;
+  address: string;
+  zipCode: string;
+  VATNumber: string;
+  updatedAt: Date;
+  createdBy: number;
+  updatedBy: number;
+  file?: File;
 }
+
 
 export interface CreateDiscussionRequest {
     title: string;

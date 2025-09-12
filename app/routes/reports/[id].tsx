@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router';
 import { TaskCard } from '~/components/TaskCard';
 import TaskModal from '~/components/TaskModal';
-import type { Task as BaseTask, Message, TaskAssignments, User } from '~/help';
+import type { Task as BaseTask, Client, Message, Project, TaskAssignments, User } from '~/help';
 import { TaskStatus, TaskPriority } from '~/types/task';
 import { userAtom } from '~/utils/userAtom';
 
@@ -73,6 +73,8 @@ export default function Reports() {
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<TaskStatus | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [selectedClients, setSelectedClients] = useState<Client[]>([]);
+  const [selectedProjects, setSelectedProjects] = useState<Project[]>([]);
   const currentUser = useAtomValue(userAtom) as unknown as User;
   const columns: {
     id: TaskStatus;
@@ -157,25 +159,32 @@ export default function Reports() {
   
         if (data.tasks && Array.isArray(data.tasks)) {
           data.tasks.forEach((task: any) => {
-            const statusValue = typeof task.status === 'number' ? 
+            const statusValue = typeof task.status === 'number' ?
               Object.values(TaskStatus)[task.status] : task.status;
-            const priorityValue = typeof task.priority === 'number' ? 
-              Object.values(TaskPriority)[task.priority] : task.priority;
+  
+            let priority: TaskPriority;
+            if (typeof task.priority === 'string') {
+              priority = task.priority as TaskPriority;
+            } else if (typeof task.priority === 'number') {
+              switch (task.priority) {
+                case 0: priority = TaskPriority.Low; break;
+                case 1: priority = TaskPriority.Medium; break;
+                case 2: priority = TaskPriority.High; break;
+                default: priority = TaskPriority.Medium;
+              }
+            } else {
+              priority = TaskPriority.Medium;
+            }
   
             const status = statusValue as TaskStatus || TaskStatus.ToDo;
-            let priority: TaskPriority;
-            if (typeof task.priority === 'number') {
-              const priorityNames = ['Low', 'Medium', 'High'];
-              priority = priorityNames[task.priority] as TaskPriority || TaskPriority.Medium;
-            } else {
-              priority = task.priority as TaskPriority || TaskPriority.Medium;
-            }
   
             if (status in tasksByStatus) {
               tasksByStatus[status].push({
                 ...task,
                 status: status,
                 priority: priority,
+                clientIds: task.clientIds || [],
+                projectIds: task.projectIds || [],
                 dueDate: task.dueDate ? new Date(task.dueDate) : null
               });
             }
@@ -323,8 +332,14 @@ export default function Reports() {
     }
   };
 
-  const createTask = async (discussionId: number, taskData: TaskFormData) => {
+  const createTask = async (discussionId: number, taskData: any) => {
     try {
+      const priorityMap: { [key: string]: string } = {
+        '0': 'Low',
+        '1': 'Medium',
+        '2': 'High'
+      };
+  
       const requestBody = {
         discussionId,
         senderId: currentUser?.userId ?? 0,
@@ -333,14 +348,16 @@ export default function Reports() {
         taskTitle: taskData.title,
         taskDescription: taskData.description || null,
         taskStatus: taskData.status || TaskStatus.ToDo,
-        taskPriority: taskData.priority || TaskPriority.Medium,
+        taskPriority: priorityMap[taskData.priority.toString()] || 'Medium',
         dueDate: taskData.dueDate ? new Date(taskData.dueDate).toISOString() : null,
         estimatedTime: taskData.estimatedTime || null,
         sortOrder: taskData.sortOrder || 0,
         assignedUserIds: taskData.assignedToUserId || [],
-        clientIds: [],
-        projectIds: [],
+        clientIds: taskData.clientIds || [],
+        projectIds: taskData.projectIds || []
       };
+  
+      console.log('Request body being sent:', requestBody); 
   
       const response = await fetch(`http://localhost:5178/api/Chat/discussions/${discussionId}/create-task-with-message`, {
         method: 'POST',
@@ -350,13 +367,15 @@ export default function Reports() {
   
       if (response.ok) {
         const result: MessageResponse = await response.json();
-        const taskStatus = mapStatus(result.taskStatus || TaskStatus.ToDo);
+        console.log('Backend response:', result);
         
+        const taskStatus = mapStatus(result.taskStatus || TaskStatus.ToDo);
+       
         const newTasks = { ...tasks };
         if (!newTasks[taskStatus]) {
           newTasks[taskStatus] = [];
         }
-        
+       
         newTasks[taskStatus] = [...newTasks[taskStatus], {
           id: result.taskId || 0,
           title: result.taskTitle || '',
@@ -367,31 +386,38 @@ export default function Reports() {
           estimatedTime: result.estimatedTime || '',
           SortOrder: result.sortOrder || 0,
           createdByUserId: result.senderId,
+          clientIds: result.clientIds || [],
+          projectIds: result.projectIds || [],
           assignedUsers: []
         }];
+  
         setMessages(prev => [...prev, {
             id: result.id,
             discussionId: result.discussionId,
             senderId: result.senderId,
             content: result.content,
             messageType: result.messageType,
-            taskId: result.taskId ,
+            taskId: result.taskId,
             createdAt: new Date(result.createdAt),
             assignedUserIds: result.assignedUserIds || [],
             timestamp: new Date(result.createdAt).getTime(),
+            clientIds: result.clientIds || [],
+            projectIds: result.projectIds || [],
         }]);
+        
+        setTasks(newTasks);
         setShowCreateModal(false);
-
-        console.log(`Task and message created successfully with Task ID: ${result.taskId}, Message ID: ${result.id}, and linked to discussion ${discussionId}`);
+        loadTasks();
+        console.log(`Task created with priority: ${result.taskPriority}`);
       } else {
-          const errorData = await response.json();
-          console.error('Server error response:', errorData);
-          throw new Error(errorData.message || 'Failed to create task and message for discussion');
+        const errorData = await response.json();
+        console.error('Server error response:', errorData);
+        throw new Error(errorData.message || 'Failed to create task and message for discussion');
       }
-      } catch (error: any) {
-          console.error('Error creating task for discussion:', error);
-          alert(error.message || 'Failed to create task. Please try again.');
-      }
+    } catch (error: any) {
+      console.error('Error creating task for discussion:', error);
+      alert(error.message || 'Failed to create task. Please try again.');
+    }
   };
 
   const updateTask = async (taskId: number, taskData: TaskFormData) => {

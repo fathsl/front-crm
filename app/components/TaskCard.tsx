@@ -1,4 +1,4 @@
-import { AlertCircle, Calendar, Clock, Edit2, Edit3, Flag, MoreVertical, Trash2 } from "lucide-react";
+import { AlertCircle, Calendar, Clock, Edit3 } from "lucide-react";
 import type { Task, TaskAssignments } from "~/help";
 import { TaskStatus } from "~/types/task";
 
@@ -9,8 +9,22 @@ export const TaskCard: React.FC<{
   onEdit: (task: Task) => void;
   onDragStart: (task: Task, sourceColumn: TaskStatus) => void;
 }> = ({ task, columnId, taskAssignments, onEdit, onDragStart }) => {
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
+
+  const getPriorityString = (priority: string | number): string => {
+    if (typeof priority === 'number') {
+      switch (priority) {
+        case 0: return 'Low';
+        case 1: return 'Medium';
+        case 2: return 'High';
+        default: return 'Medium';
+      }
+    }
+    return priority;
+  };
+
+  const getPriorityColor = (priority: string | number) => {
+    const priorityStr = getPriorityString(priority);
+    switch (priorityStr) {
       case 'High': return 'bg-orange-100 text-orange-800 border-orange-200';
       case 'Medium': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
       case 'Low': return 'bg-green-100 text-green-800 border-green-200';
@@ -18,8 +32,9 @@ export const TaskCard: React.FC<{
     }
   };
 
-  const getPriorityIcon = (priority: string) => {
-    switch (priority) {
+  const getPriorityIcon = (priority: string | number) => {
+    const priorityStr = getPriorityString(priority);
+    switch (priorityStr) {
       case 'Low': return <AlertCircle className="w-3 h-3" />;
       case 'Medium': return <AlertCircle className="w-3 h-3" />;
       case 'High': return <AlertCircle className="w-3 h-3" />;
@@ -46,6 +61,8 @@ export const TaskCard: React.FC<{
     onDragStart(task, columnId);
   };
 
+  const priorityDisplay = getPriorityString(task.priority);
+
   return (
     <div
       draggable
@@ -54,10 +71,10 @@ export const TaskCard: React.FC<{
     >
       <div className="flex items-start justify-between mb-3">
         <div className="flex items-center gap-2">
-          <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium border ${getPriorityColor(task.priority)}`}>
-            {getPriorityIcon(task.priority)}
-            {task.priority}
-          </span>
+        <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium border ${getPriorityColor(task.priority)}`}>
+          {getPriorityIcon(task.priority)}
+          {priorityDisplay}
+        </span>
         </div>
         <button
           onClick={() => onEdit(task)}

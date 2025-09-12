@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import { TaskPriority, TaskStatus } from '~/types/task';
-import type { Task } from '~/help';
+import type { Client, Project, Task } from '~/help';
 
 interface TaskModalProps {
   isOpen: boolean;
@@ -31,7 +31,7 @@ const TaskModal: React.FC<TaskModalProps> = ({
   const [formData, setFormData] = useState<TaskFormData>({
     title: '',
     description: '',
-    priority: 'Medium',
+    priority: '1',
     status: 'ToDo',
     dueDate: '',
     estimatedTime: '',
@@ -39,15 +39,67 @@ const TaskModal: React.FC<TaskModalProps> = ({
   });
 
   const [loading, setLoading] = useState(false);
+  const [selectedClients, setSelectedClients] = useState<Client[]>([]);
+  const [selectedProjects, setSelectedProjects] = useState<Project[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [error, setError] = useState('');
+  const baseUrl = "http://localhost:5178";
+  const fetchClients = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch(`${baseUrl}/api/Clients`);
+      if (response.ok) {
+        const data = await response.json();
+        setClients(data);
+      } else {
+        throw new Error('Failed to fetch clients');
+      }
+    } catch (err) {
+      setError('Kullanıcılar yüklenirken hata oluştu');
+      console.error('Error fetching clients:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  console.log(formData.priority);
+  const fetchProjects = async () => {
+      try {
+        const response = await fetch(`${baseUrl}/api/Project`);
+        const data = await response.json();
+        setProjects(data);
+      } catch (error) {
+        console.error('Projects fetch error:', error);
+      }
+    };
+  
+    useEffect(() => {
+      fetchProjects();
+    }, []);
+
+useEffect(() => {
+  fetchClients();
+}, []);
+
+  const priorityToFormValue = (priority: string | number): string => {
+    if (typeof priority === 'number') {
+      return priority.toString();
+    }
+    switch (priority) {
+      case 'Low': return '0';
+      case 'Medium': return '1';
+      case 'High': return '2';
+      default: return '1';
+    }
+  };
 
   useEffect(() => {
     if (initialData) {
+      const priorityValue = priorityToFormValue(initialData.priority);
       setFormData({
         title: initialData.title || '',
         description: initialData.description || '',
-        priority: initialData.priority?.toString() || 'Medium',
+        priority: priorityValue,
         status: initialData.status?.toString() || 'ToDo',
         dueDate: initialData.dueDate ? new Date(initialData.dueDate).toISOString().split('T')[0] : '',
         estimatedTime: initialData.estimatedTime || '',
@@ -57,7 +109,7 @@ const TaskModal: React.FC<TaskModalProps> = ({
       setFormData({
         title: '',
         description: '',
-        priority: 'Medium',
+        priority: '1',
         status: 'ToDo',
         dueDate: '',
         estimatedTime: '',
@@ -74,7 +126,10 @@ const TaskModal: React.FC<TaskModalProps> = ({
     try {
       const submitData = {
         ...formData,
-        DueDate: formData.dueDate ? new Date(formData.dueDate).toISOString() : null
+        priority: parseInt(formData.priority),
+        DueDate: formData.dueDate ? new Date(formData.dueDate).toISOString() : null,
+        clientIds: selectedClients.map(client => client.id),
+        projectIds: selectedProjects.map(project => project.id)
       };
       await onSubmit(submitData);
     } catch (error) {
@@ -201,7 +256,73 @@ const TaskModal: React.FC<TaskModalProps> = ({
               />
             </div>
 
-            {/* Buttons */}
+            <div>
+            <div className="text-sm text-slate-600 mb-2">Clients:</div>
+            <div className="space-y-2">
+              {selectedClients.map(client => (
+                <div key={client.id} className="flex items-center justify-between bg-white px-2 py-1 rounded border">
+                  <span className="text-sm">{client.first_name}</span>
+                  <button
+                    onClick={() => setSelectedClients(prev => prev.filter(c => c.id !== client.id))}
+                    className="text-red-500 hover:text-red-700"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              ))}
+              <select
+                value=""
+                onChange={(e) => {
+                  const clientId = parseInt(e.target.value);
+                  const client = clients.find(c => c.id === clientId);
+                  if (client && !selectedClients.find(c => c.id === clientId)) {
+                    setSelectedClients(prev => [...prev, client]);
+                  }
+                }}
+                className="w-full text-sm border border-slate-300 rounded px-2 py-1 bg-white"
+              >
+                <option value="">Add client...</option>
+                {clients.filter(client => !selectedClients.find(c => c.id === client.id)).map(client => (
+                  <option key={client.id} value={client.id}>
+                    {client.first_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="text-sm text-slate-600 mb-2">Projects:</div>
+            <div className="space-y-2">
+              {selectedProjects.map(project => (
+                <div key={project.id} className="flex items-center justify-between bg-white px-2 py-1 rounded border">
+                  <span className="text-sm">{project.title}</span>
+                  <button
+                    onClick={() => setSelectedProjects(prev => prev.filter(p => p.id !== project.id))}
+                    className="text-red-500 hover:text-red-700"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              ))}
+              <select
+                value=""
+                onChange={(e) => {
+                  const projectId = parseInt(e.target.value);
+                  const project = projects.find(p => p.id === projectId);
+                  if (project && !selectedProjects.find(p => p.id === projectId)) {
+                    setSelectedProjects(prev => [...prev, project]);
+                  }
+                }}
+                className="w-full text-sm border border-slate-300 rounded px-2 py-1 bg-white"
+              >
+                <option value="">Add project...</option>
+                {projects.filter(project => !selectedProjects.find(p => p.id === project.id)).map(project => (
+                  <option key={project.id} value={project.id}>
+                    {project.title}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
             <div className="flex gap-3 pt-4">
               <button
                 type="button"
