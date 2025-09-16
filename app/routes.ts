@@ -13,7 +13,6 @@ export default [
     route("users", "routes/users.tsx"),
     route("reports", "routes/reports.tsx"),
     route("projects", "routes/projects.tsx"),
-    route("projects.$idProject", "routes/projects.$idProject.tsx"),
     route("clients", "routes/clients.tsx"),
     route("meetings", "routes/meetings.tsx"),
     route("chats", "routes/chats.tsx"),
