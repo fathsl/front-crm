@@ -16,9 +16,9 @@ interface ExtendedClient extends Client {
   country: string;
   details: string;
   createdAt: Date;
-  updatedAt: Date;
+  modifiedAt: Date;
   createdBy: number;
-  updatedBy: number;
+  modifiedBy: number;
   imageUrl: string;
   zipCode: string;
   VATNumber: string;
@@ -49,9 +49,9 @@ export default function Clients() {
     phone: '',
     email: '',
     createdAt: new Date(),
-    updatedAt: new Date(),
+    modifiedAt: new Date(),
     createdBy: 0,
-    updatedBy: 0,
+    modifiedBy: 0,
     imageUrl: '',
     zipCode: '',
     VATNumber: '',
@@ -263,8 +263,8 @@ export default function Clients() {
       ...formData,
       id: selectedClient?.id || 0,
       createdBy: modalMode === 'add' ? currentUserId : (formData.createdBy || currentUserId),
-      updatedBy: currentUserId,
-      updatedAt: new Date(),
+      modifiedBy: currentUserId,
+      modifiedAt: new Date(),
       createdAt: modalMode === 'add' ? new Date() : (formData.createdAt || new Date())
     };
    
@@ -295,9 +295,9 @@ export default function Clients() {
       city: '',
       address: '',
       createdAt: new Date(),
-      updatedAt: new Date(),
+      modifiedAt: new Date(),
       createdBy: 0,
-      updatedBy: 0,
+      modifiedBy: 0,
       imageUrl: '',
       zipCode: '',
       VATNumber: ''
@@ -317,9 +317,9 @@ export default function Clients() {
       country: clientData.country || '',
       details: clientData.details || '',
       createdAt: new Date(clientData.createdAt),
-      updatedAt: new Date(clientData.updatedAt),
+      modifiedAt: new Date(clientData.modifiedAt),
       createdBy: clientData.createdBy,
-      updatedBy: clientData.updatedBy,
+      modifiedBy: clientData.modifiedBy,
       imageUrl: clientData.imageUrl,
       zipCode: clientData.zipCode,
       VATNumber: clientData.VATNumber,

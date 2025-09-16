@@ -278,10 +278,11 @@ export interface Client {
   address: string;
   zipCode: string;
   VATNumber: string;
-  updatedAt: Date;
+  modifiedAt: Date;
   createdBy: number;
-  updatedBy: number;
+  modifiedBy: number;
   file?: File;
+  projectIds?: number[];
 }
 
 
