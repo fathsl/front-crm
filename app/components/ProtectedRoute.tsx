@@ -1,5 +1,5 @@
 import { useAtom } from 'jotai';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { useEffect } from 'react';
 import { userAtom } from '~/utils/userAtom';
 import { hasPermission } from '~/utils/permissions';

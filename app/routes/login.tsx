@@ -2,10 +2,10 @@ import { useTranslation } from 'react-i18next';
 import { useState } from 'react';
 import { useAtom } from 'jotai';
 import { userAtom } from '~/utils/userAtom';
-import { AuthAPI, handleAuthError, type LoginResponse } from '~/utils/api.auth';
+import { AuthAPI, handleAuthError } from '~/utils/api.auth';
 import { ArrowRightIcon, EyeIcon, EyeOffIcon, LockIcon, MailIcon } from 'lucide-react';
 import { useAuthRedirect } from '~/hooks/useAuthRedirect';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 export default function Login() {
   const { t, i18n } = useTranslation();
@@ -42,32 +42,33 @@ export default function Login() {
     setIsLoading(true);
 
     try {
-      const response: LoginResponse = await AuthAPI.login({
+      const response = await AuthAPI.login({
         email: email.trim(),
         password: password,
       });
 
-      if (response.success) {
+      if (response.data?.success) {
+        const d = response.data;
         const userData = {
-          userId: response.userId,
-          email: response.email,
-          permissionType: response.permissionType,
-          status: response.status,
+          userId: d.userId,
+          email: d.email,
+          permissionType: d.permissionType,
+          status: d.status,
           loginTime: Date.now(),
-          fullName: response.fullName || response.email.split('@')[0],
-          role: response.permissionType
+          fullName: d.fullName || d.email.split('@')[0],
+          role: d.permissionType,
         };
 
         setUser(userData);
-        
+
         localStorage.setItem('user', JSON.stringify(userData));
-        
-        navigate('/dashboard');
+
+        navigate('/dashboard', { replace: true });
       } else {
-        const errorMessage = response.message || 'Giriş işlemi başarısız oldu. Lütfen bilgilerinizi kontrol edip tekrar deneyin.';
+        const errorMessage = response.error || response.data?.message || 'Giriş işlemi başarısız oldu. Lütfen bilgilerinizi kontrol edip tekrar deneyin.';
         setError(errorMessage);
       }
-      
+
     } catch (error) {
       console.error('Login error:', error);
       const errorMessage = handleAuthError(error) || 'Bir hata oluştu. Lütfen daha sonra tekrar deneyin.';

@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { isAuthenticated } from '~/utils/auth';
 
 export const useAuthRedirect = (requireAuth = true, redirectPath = '/login') => {
