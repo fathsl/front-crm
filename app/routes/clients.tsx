@@ -41,6 +41,14 @@ export default function Clients() {
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   const [usersById, setUsersById] = useState<Record<string, any>>({});
   const currentUser = useAtomValue<User | null>(userAtom);
+  const isAdmin = (currentUser?.permissionType === 'Yonetici') || (currentUser?.role === 'Yonetici');
+
+  const filterByRole = (list: Client[]) => {
+    if (isAdmin) return list;
+    const uid = currentUser?.userId ?? -1;
+    return list.filter(c => c.createdBy === uid);
+  };
+
   const [formData, setFormData] = useState<Omit<ExtendedClient, 'id'> & { city?: string; address?: string; file?: File; }>({
     first_name: '',
     last_name: '',
@@ -73,8 +81,8 @@ export default function Clients() {
       if (response.ok) {
         const data = await response.json();
         setClients(data);
-        
-        setFilteredClients(data);
+        const visible = filterByRole(data);
+        setFilteredClients(visible);
       } else {
         throw new Error('Failed to fetch clients');
       }
@@ -135,10 +143,28 @@ export default function Clients() {
     }
   }, [clients]);
 
+  useEffect(() => {
+    if (!clients) return;
+    if (searchTerm.trim()) {
+      const term = searchTerm.toLowerCase();
+      const locallyFiltered = clients.filter(client => 
+        client.country.toLowerCase().includes(term) ||
+        client.phone.toLowerCase().includes(term) ||
+        client.email.toLowerCase().includes(term) ||
+        client.last_name.toLowerCase().includes(term) ||
+        client.first_name.toLowerCase().includes(term) ||
+        client.details.toLowerCase().includes(term)
+      );
+      setFilteredClients(filterByRole(locallyFiltered));
+    } else {
+      setFilteredClients(filterByRole(clients));
+    }
+  }, [currentUser, isAdmin]);
+
   const handleSearch = async (query: string) => {
     setSearchTerm(query);
     if (!query.trim()) {
-      setFilteredClients(clients);
+      setFilteredClients(filterByRole(clients));
       return;
     }
 
@@ -146,7 +172,7 @@ export default function Clients() {
       const response = await fetch(`${baseUrl}/api/Clients/search?query=${encodeURIComponent(query)}`);
       if (response.ok) {
         const data = await response.json();
-        setFilteredClients(data);
+        setFilteredClients(filterByRole(data));
       }
     } catch (err) {
       console.error('Search error:', err);
@@ -158,7 +184,7 @@ export default function Clients() {
         client.first_name.toLowerCase().includes(query.toLowerCase()) ||
         client.details.toLowerCase().includes(query.toLowerCase())
       );
-      setFilteredClients(filtered);
+      setFilteredClients(filterByRole(filtered));
     }
   };
 
@@ -429,13 +455,15 @@ export default function Clients() {
                  >
                    <Edit2 className="h-4 w-4" />
                  </button>
-                 <button
-                   onClick={() => deleteClient(client.id)}
-                   className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                   title="Delete Client"
-                 >
-                   <Trash2 className="h-4 w-4" />
-                 </button>
+                 {currentUser?.role === 'Yonetici' && (
+                   <button
+                     onClick={() => deleteClient(client.id)}
+                     className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                     title="Delete Client"
+                   >
+                     <Trash2 className="h-4 w-4" />
+                   </button>
+                 )}
                </div>
              </div>
  
@@ -505,20 +533,51 @@ export default function Clients() {
                  )}
                  
                  <div className="flex items-center gap-2">
+                   <div className='flex items-center gap-2'>
                    <Calendar className="h-4 w-4 text-gray-400" />
                    <span className="text-sm text-gray-600">
-                     Created {new Date(client.createdAt).toLocaleDateString('en-US', {
-                       month: 'short',
-                       day: 'numeric',
-                       year: 'numeric'
-                     })}
-                   </span>
+                    Created{" "}
+                    {new Date(client.createdAt).toLocaleString("en-US", {
+                      year: "numeric",
+                      month: "short",
+                      day: "numeric",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      second: "2-digit",
+                    })}
+                  </span>
+                   </div>
+                   {/* {client.modifiedAt && (
+                    <div className='flex items-center gap-2'>
+                    <Calendar className="h-4 w-4 text-gray-400" />
+                      <span className="text-sm text-gray-600">
+                      Modified{" "}
+                      {new Date(client.modifiedAt).toLocaleString("en-US", {
+                        year: "numeric",
+                        month: "short",
+                        day: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                        second: "2-digit",
+                      })}
+                    </span>
+                    </div>
+                    )} */}
                  </div>
                </div>
                
                <div className="text-right">
+                 <div>
                  <p className="text-sm text-gray-600">Created by</p>
                  <p className="text-sm font-medium text-gray-900">{usersById[client.createdBy]?.fullName ?? "Unknown User"}</p>
+                 </div>
+                 {client.modifiedBy && (
+                   <div>
+                     <p className="text-sm text-gray-600">Modified by</p>
+                     <p className="text-sm font-medium text-gray-900">{usersById[client.modifiedBy]?.fullName ?? "Unknown User"}</p>
+                   </div>
+                 )}
+                 
                </div>
              </div>
            </div>

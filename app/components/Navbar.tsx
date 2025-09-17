@@ -89,11 +89,15 @@ export default function Navbar({ onMenuToggle }: NavbarProps) {
                   className="flex text-sm bg-gray-800 rounded-full focus:ring-4 focus:ring-gray-300 dark:focus:ring-gray-600"
                 >
                   <span className="sr-only">Open user menu</span>
-                  <img
-                    className="w-8 h-8 rounded-full"
-                    src="https://flowbite.com/docs/images/people/profile-picture-5.jpg"
-                    alt="user photo"
-                  />
+                  <div className="absolute -bottom-2 -left-2 w-8 h-8 bg-white/10 rounded-full"></div>
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center shadow-lg relative overflow-hidden bg-gradient-to-br from-indigo-400 via-purple-400 to-pink-400">
+                  <div className="absolute inset-0 bg-gradient-to-br from-white/20 to-transparent"></div>
+                  <div className="absolute -top-4 -right-4 w-16 h-16 bg-white/10 rounded-full"></div>
+                  <div className="absolute -bottom-2 -left-2 w-8 h-8 bg-white/10 rounded-full"></div>
+                  <span className="text-xl font-bold text-white relative z-10 select-none">
+                    {user?.email?.charAt(0).toUpperCase() || user?.fullName?.charAt(0).toUpperCase() || 'U'}
+                  </span>
+                </div>
                 </button>
                 
                 {isProfileOpen && (

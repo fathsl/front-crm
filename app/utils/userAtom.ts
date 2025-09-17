@@ -11,6 +11,18 @@ export interface User {
   role: string;
 }
 
+export interface CurrUser {
+  userId: number;
+  email: string;
+  firstName: string;
+  lastName: string;
+  permissionType: string;
+  status: string;
+  loginTime: number;
+  fullName: string;
+  role: string;
+}
+
 // Try to load user from localStorage on initial load
 const loadUserFromStorage = (): User | null => {
   if (typeof window === 'undefined') return null;
@@ -20,6 +32,8 @@ const loadUserFromStorage = (): User | null => {
 
 // Create the atom with initial value from localStorage
 export const userAtom = atom<User | null>(loadUserFromStorage());
+
+export const currUser = atomWithStorage<CurrUser | null>('user', null);
 
 // Optional: Create a derived atom for role-based checks
 export const userRoleAtom = atom(

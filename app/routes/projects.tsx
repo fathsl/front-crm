@@ -29,6 +29,8 @@ export default function ProjectsPage() {
       EstimationTime: '0',
     });
 
+    const isAdmin = (user?.permissionType === 'Yonetici') || (user?.role === 'Yonetici');
+
     const resetForm = () => {
         setFormData({
             id: 0,
@@ -222,7 +224,7 @@ export default function ProjectsPage() {
       </div>
       <div className="max-w-7xl mx-auto px-4 py-6">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6">
-          {projects.map((project) => {
+          {(isAdmin ? projects : projects.filter(p => p.createdByUserId === (user?.userId ?? -1))).map((project) => {
             const statusConfig = getStatusConfig(project.status);
             const StatusIcon = statusConfig.icon;
             

@@ -18,5 +18,6 @@ export default [
     route("chats", "routes/chats.tsx"),
     route("reports/:id", "routes/reports/[id].tsx"),
     route("clients/:id", "routes/clients/[id].tsx"),
+    route("profile", "routes/profile.tsx"),
   ]),
 ] satisfies RouteConfig;
