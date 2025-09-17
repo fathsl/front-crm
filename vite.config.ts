@@ -17,7 +17,14 @@ export default defineConfig({
     fs: {
       strict: false
     },
-    cors: true
+    cors: true,
+    proxy: {
+      '/api': {
+        target: 'https://api-crm-tegd.onrender.com',
+        changeOrigin: true,
+        secure: false
+      }
+    }
   },
   optimizeDeps: {
     include: ['jotai', 'jotai/utils'],
