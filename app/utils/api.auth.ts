@@ -26,11 +26,11 @@ export interface ApiError {
 
 export class AuthAPI {
   static async login(credentials: LoginRequest): Promise<ApiResponse<LoginResponse>> {
-    return ApiClient.post<LoginResponse>('/User/login', credentials);
+    return ApiClient.post<LoginResponse>('/Auth/login', credentials);
   }
 
   static async logout(): Promise<ApiResponse<void>> {
-    return ApiClient.post<void>('/User/logout');
+    return ApiClient.post<void>('/Auth/logout');
   }
 
   // Add other auth-related methods here
