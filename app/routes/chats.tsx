@@ -108,7 +108,7 @@ const ChatApplication: React.FC = () => {
   const [taskMediaRecorder, setTaskMediaRecorder] = useState<MediaRecorder | null>(null);
   const isRecordingCanceled = useRef(false);
   const navigate = useNavigate();
-  const baseUrl = "http://localhost:5178";
+  const baseUrl = "https://api-crm-tegd.onrender.com";
 
   const getPriorityFromNumber = (priorityNum: number): TaskPriority => {
     const priorityMap = {
@@ -158,7 +158,7 @@ const ChatApplication: React.FC = () => {
   
     const fetchProjects = async () => {
         try {
-          const response = await fetch('http://localhost:5178/api/Project');
+          const response = await fetch('https://api-crm-tegd.onrender.com/api/Project');
           const data = await response.json();
           setProjects(data);
         } catch (error) {

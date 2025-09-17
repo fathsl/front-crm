@@ -44,7 +44,7 @@ const TaskModal: React.FC<TaskModalProps> = ({
   const [clients, setClients] = useState<Client[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [error, setError] = useState('');
-  const baseUrl = "http://localhost:5178";
+  const baseUrl = "https://api-crm-tegd.onrender.com";
   const fetchClients = async () => {
     try {
       setLoading(true);

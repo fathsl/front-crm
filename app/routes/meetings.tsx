@@ -18,7 +18,7 @@ const ChatPage = () => {
     const [activeTab, setActiveTab] = useState('rooms');
     const [isDrawerOpen, setIsDrawerOpen] = useState(false);
     const [roomsLoading, setRoomsLoading] = useState(false);
-    const baseUrl = "http://localhost:5178";
+    const baseUrl = "https://api-crm-tegd.onrender.com";
   
     const fetchUsers = async () => {
       try {

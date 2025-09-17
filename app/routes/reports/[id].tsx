@@ -144,7 +144,7 @@ export default function Reports() {
 
   const loadTasks = async () => {
     try {
-      const response = await fetch(`http://localhost:5178/api/Chat/discussion/${id}/tasks-and-media`);
+      const response = await fetch(`https://api-crm-tegd.onrender.com/api/Chat/discussion/${id}/tasks-and-media`);
       if (response.ok) {
         const data = await response.json();
         console.log('Raw API response:', data);
@@ -212,7 +212,7 @@ export default function Reports() {
 
   const loadAllTaskAssignments = async () => {
     try {
-      const response = await fetch('http://localhost:5178/api/Task/Assignments');
+      const response = await fetch('https://api-crm-tegd.onrender.com/api/Task/Assignments');
       if (response.ok) {
         const data = await response.json();
         setTaskAssignments(data);
@@ -227,7 +227,7 @@ export default function Reports() {
 
   const loadUsers = async () => {
     try {
-      const response = await fetch('http://localhost:5178/api/User');
+      const response = await fetch('https://api-crm-tegd.onrender.com/api/User');
       if (response.ok) {
         const data = await response.json();
         setUsers(data);
@@ -292,7 +292,7 @@ export default function Reports() {
         console.error('Current user not available');
         return;
       }
-      const response = await fetch(`http://localhost:5178/api/Task/${taskToMove.id}/status`, {
+      const response = await fetch(`https://api-crm-tegd.onrender.com/api/Task/${taskToMove.id}/status`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -359,7 +359,7 @@ export default function Reports() {
   
       console.log('Request body being sent:', requestBody); 
   
-      const response = await fetch(`http://localhost:5178/api/Chat/discussions/${discussionId}/create-task-with-message`, {
+      const response = await fetch(`https://api-crm-tegd.onrender.com/api/Chat/discussions/${discussionId}/create-task-with-message`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestBody)
@@ -434,7 +434,7 @@ export default function Reports() {
         updatedByUserId: currentUser?.userId ?? 0
       };
   
-      const response = await fetch(`http://localhost:5178/api/Tasks/${taskId}`, {
+      const response = await fetch(`https://api-crm-tegd.onrender.com/api/Tasks/${taskId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestBody)

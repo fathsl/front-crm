@@ -89,7 +89,7 @@ export default function Reports() {
 
   const loadTasks = async () => {
     try {
-      const response = await fetch('http://localhost:5178/api/Task');
+      const response = await fetch('https://api-crm-tegd.onrender.com/api/Task');
       if (response.ok) {
         const data = await response.json();
 
@@ -152,7 +152,7 @@ export default function Reports() {
 
   const loadAllTaskAssignments = async () => {
     try {
-      const response = await fetch('http://localhost:5178/api/Task/Assignments');
+      const response = await fetch('https://api-crm-tegd.onrender.com/api/Task/Assignments');
       if (response.ok) {
         const data = await response.json();
         setTaskAssignments(data);
@@ -167,7 +167,7 @@ export default function Reports() {
 
   const loadUsers = async () => {
     try {
-      const response = await fetch('http://localhost:5178/api/User');
+      const response = await fetch('https://api-crm-tegd.onrender.com/api/User');
       if (response.ok) {
         const data = await response.json();
         setUsers(data);
@@ -214,7 +214,7 @@ export default function Reports() {
     if (!draggedTask || draggedTask.sourceColumn === targetColumnId) return;
 
     try {
-      const response = await fetch(`http://localhost:5178/api/tasks/${draggedTask.id}/status`, {
+      const response = await fetch(`https://api-crm-tegd.onrender.com/api/tasks/${draggedTask.id}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: targetColumnId })
@@ -250,7 +250,7 @@ export default function Reports() {
 
   const createTask = async (taskData: any) => {
     try {
-      const response = await fetch('http://localhost:5178/api/Task', {
+      const response = await fetch('https://api-crm-tegd.onrender.com/api/Task', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -279,7 +279,7 @@ export default function Reports() {
 
   const updateTask = async (taskId: number, taskData: Partial<Task>) => {
     try {
-      const response = await fetch(`http://localhost:5178/api/Task/${taskId}`, {
+      const response = await fetch(`https://api-crm-tegd.onrender.com/api/Task/${taskId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

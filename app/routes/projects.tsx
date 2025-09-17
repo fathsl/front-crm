@@ -9,7 +9,7 @@ import { useNavigate } from 'react-router';
 export default function ProjectsPage() {
   const { t } = useTranslation();
   const [user] = useAtom(userAtom);
-  const baseUrl = "http://localhost:5178";
+  const baseUrl = "https://api-crm-tegd.onrender.com";
   const [projects,setProjects] = useState<Project[]>([]);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
@@ -48,7 +48,7 @@ export default function ProjectsPage() {
 
   const fetchProjects = async () => {
     try {
-      const response = await fetch('http://localhost:5178/api/Project');
+      const response = await fetch('https://api-crm-tegd.onrender.com/api/Project');
       const data = await response.json();
       setProjects(data);
     } catch (error) {

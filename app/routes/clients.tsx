@@ -64,7 +64,7 @@ export default function Clients() {
     setSelectedClient(null);
   };
 
-  const baseUrl = "http://localhost:5178";
+  const baseUrl = "https://api-crm-tegd.onrender.com";
   
   const fetchClients = async () => {
     try {
@@ -88,7 +88,7 @@ export default function Clients() {
 
   const fetchProjects = async () => {
       try {
-        const response = await fetch('http://localhost:5178/api/Project');
+        const response = await fetch('https://api-crm-tegd.onrender.com/api/Project');
         const data = await response.json();
         setProjects(data);
       } catch (error) {
@@ -182,7 +182,7 @@ export default function Clients() {
         formData.append('file', clientData.file);
       }
 
-      const baseUrl = 'http://localhost:5178'; 
+      const baseUrl = 'https://api-crm-tegd.onrender.com'; 
  
       const response = await fetch(`${baseUrl}/api/Clients`, {
         method: 'POST',

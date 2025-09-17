@@ -5,7 +5,7 @@ import { useLoaderData, type LoaderFunctionArgs } from "react-router";
 import type { FilteredOrderDto, OrderFilterDto, ReportingData } from "~/help";
 import { json } from "@remix-run/node";
 export async function loader({ request }: LoaderFunctionArgs): Promise<Response> {
-    const baseUrl = process.env.API_BASE_URL || "http://localhost:5178";
+    const baseUrl = process.env.API_BASE_URL || "https://api-crm-tegd.onrender.com";
     
     const emptyData: ReportingData = {
       productCategories: [],

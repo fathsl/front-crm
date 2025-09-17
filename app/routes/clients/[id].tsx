@@ -45,7 +45,7 @@ const ClientDetailsPage = () => {
   const searchInputRef = useRef(null);
   const [searchTerm, setSearchTerm] = useState('');
 
-  const baseUrl = "http://localhost:5178";
+  const baseUrl = "https://api-crm-tegd.onrender.com";
   const currentUser = useAtomValue(userAtom);
   const currentUserId = currentUser?.userId;
 

@@ -38,7 +38,7 @@ export default function Users() {
     setChatDrawer({ isOpen: false, user: null });
   };
 
-  const baseUrl = "http://localhost:5178";
+  const baseUrl = "https://api-crm-tegd.onrender.com";
   
   const fetchUsers = async () => {
     try {

@@ -1,4 +1,4 @@
-const API_BASE_URL = 'http://localhost:5178/api';
+const API_BASE_URL = 'https://api-crm-tegd.onrender.com/api';
 
 export interface LoginRequest {
   email: string;
