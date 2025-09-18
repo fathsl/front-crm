@@ -1,7 +1,7 @@
 import { useAtomValue } from "jotai";
 import { AlertCircle, ArrowLeft, CheckCircle, Clock, DownloadIcon, Edit3, ExternalLink, FileIcon, FileText, ListChecksIcon, MessageSquare, Mic, MoreVertical, Paperclip, Pause, Play, Plus, Search, Send, Share, Square, Trash2, Users, Volume2, X, XCircle } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react"; 
-import { formatFileSize, type SendMessageRequest, type User } from "~/help";
+import { formatFileSize, Role, type SendMessageRequest, type User } from "~/help";
 import type { Client, CreateDiscussionRequest, Project } from "~/help";
 import type { Discussion } from "~/help";
 import type { Message } from "~/help";
@@ -43,6 +43,8 @@ enum MessageType {
 
 interface DiscussionWithLastTask extends Discussion {
   lastTaskStatus?: TaskStatusBg;
+  senderName?: string;
+  receiverName?: string;
 }
 
 enum TaskStatusBg {
@@ -98,23 +100,6 @@ const ChatApplication: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [sending, setSending] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const [taskData, setTaskData] = useState({
-    title: '',
-    description: '',
-    priority: TaskPriority.Medium,
-    dueDate: '',
-    estimatedTime: '',
-    assignedUsers: [],
-    discussionId: '',
-    senderId: '',
-    receiverId: '',
-    content: '',
-    messageType: '',
-    taskTitle: '',
-    taskStatus: '',
-    taskPriority: '',
-    assignedUserIds: []
-  });
 
   const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const audioStreamRef = useRef<MediaStream | null>(null);
@@ -124,6 +109,9 @@ const ChatApplication: React.FC = () => {
   const isRecordingCanceled = useRef(false);
   const navigate = useNavigate();
   const baseUrl = "https://api-crm-tegd.onrender.com";
+  const isAdmin = currentUser?.role === "Yonetici";
+  console.log("isAdmin", isAdmin);
+  
 
   const getPriorityFromNumber = (priorityNum: number): TaskPriority => {
     const priorityMap = {
@@ -191,9 +179,10 @@ const ChatApplication: React.FC = () => {
       const response = await fetch(`${baseUrl}/api/User`);
       if (response.ok) {
         const data = await response.json();
-        setUsers(data);
-        console.log("userrss",data);
-        } else {
+        const filteredUsers = data.filter((user: User) => user.userId !== currentUser?.userId);
+        setUsers(filteredUsers);
+        console.log("users", filteredUsers);
+      } else {
         throw new Error('Failed to fetch users');
       }
     } catch (err) {
@@ -220,9 +209,9 @@ const ChatApplication: React.FC = () => {
       } finally {
         setLoading(false);
       }
-    };
+  };
   
-    const fetchProjects = async () => {
+  const fetchProjects = async () => {
         try {
           const response = await fetch('https://api-crm-tegd.onrender.com/api/Project');
           const data = await response.json();
@@ -230,33 +219,45 @@ const ChatApplication: React.FC = () => {
         } catch (error) {
           console.error('Projects fetch error:', error);
         }
-      };
+  };
     
-      useEffect(() => {
-        fetchProjects();
-      }, []);
+  useEffect(() => {
+    fetchProjects();
+  }, []);
 
   useEffect(() => {
     fetchUsers();
     fetchClients();
   }, []);
 
-  const fetchDiscussions = useCallback(async (userId: number) => {
-    if (!userId) return;
-    
+  const fetchDiscussions = useCallback(async (currentUserId: number, selectedUserId?: number) => {
+    if (!currentUserId) return;
+  
     setLoading(true);
     try {
-      const response = await fetch(`${baseUrl}/api/Chat/discussions/${userId}`);
+      let url = `${baseUrl}/api/Chat/discussions/${currentUserId}`;
+      
+      if (selectedUserId !== undefined) {
+        if (isAdmin) {
+          url = `${baseUrl}/api/Chat/discussions/admin/${currentUserId}/${selectedUserId}`;
+        } else {
+          url = `${baseUrl}/api/Chat/discussions/${currentUserId}/${selectedUserId}`;
+        }
+      }
+      
+      const response = await fetch(url);
       if (response.ok) {
         const data = await response.json();
         setDiscussions(data);
+      } else {
+        throw new Error('Failed to fetch discussions');
       }
     } catch (error) {
       console.error('Error fetching discussions:', error);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [isAdmin]);
 
   const fetchMessages = useCallback(async (discussionId: number) => {
     try {
@@ -277,7 +278,9 @@ const ChatApplication: React.FC = () => {
       title: newDiscussionTitle,
       description: newDiscussionDescription,
       createdByUserId: currentUser?.userId || 0,
-      participantUserIds: [currentUser?.userId || 0, selectedUser.userId]
+      participantUserIds: [currentUser?.userId || 0, selectedUser.userId],
+      senderId: currentUser?.userId || 0,
+      receiverId: selectedUser.userId
     };
   
     try {
@@ -465,7 +468,9 @@ const ChatApplication: React.FC = () => {
     setSelectedUser(user);
     setSelectedDiscussion(null);
     setMessages([]);
-    fetchDiscussions(user.userId);
+    
+    fetchDiscussions(currentUser?.userId || 0, user.userId);
+    
     setCurrentView('discussions');
   };
 
@@ -740,11 +745,11 @@ const ChatApplication: React.FC = () => {
 
   useEffect(() => {
     if (!selectedDiscussion) return;
-
+  
     const interval = setInterval(() => {
       fetchMessages(selectedDiscussion.id);
     }, 3000);
-
+  
     return () => clearInterval(interval);
   }, [selectedDiscussion, fetchMessages]);
 
@@ -1239,121 +1244,170 @@ const ChatApplication: React.FC = () => {
         </button>
       </div>
 
-      <div className={`${currentView === 'users' ? 'flex' : 'hidden'} md:flex w-full md:w-80 bg-white flex-col border-r border-gray-200`}>
-        <div className="hidden md:block p-6 border-b border-gray-100">
-          <h2 className="text-xl font-bold text-gray-900 mb-1">Contacts</h2>
-          <p className="text-sm text-gray-500">{users.length} contacts available</p>
-        </div>
+    <div className={`${currentView === 'users' ? 'flex' : 'hidden'} md:flex w-full md:w-80 bg-white flex-col border-r border-gray-200`}>
+  <div className="p-4 border-b border-gray-100">
+    <div className="flex items-center justify-between">
+      <div>
+        <h2 className="font-semibold text-gray-900">
+          {isAdmin ? 'All Users' : 'Select User to Chat'}
+        </h2>
+        <p className="text-sm text-gray-500">
+          {isAdmin ? 'View any user\'s discussions' : 'Start or continue conversations'}
+        </p>
+      </div>
+    </div>
 
-        <div className="p-4 border-b border-gray-100">
+    <div className="mt-3">
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+        <input
+          type="text"
+          placeholder="Search users..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+        />
+      </div>
+    </div>
+  </div>
+
+  <div className="flex-1 overflow-y-auto">
+    {filteredUsers.map((user) => (
+      <div
+        key={user.userId}
+        onClick={() => handleUserSelect(user)}
+        className="p-4 border-b border-gray-50 hover:bg-gray-50 cursor-pointer transition-colors active:bg-gray-100"
+      >
+        <div className="flex items-center space-x-3">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input 
-              type="text" 
-              placeholder="Search contacts..." 
-              className="w-full pl-10 pr-4 py-3 bg-gray-50 border-0 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-            />
+            <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-semibold">
+              {user.kullaniciAdi[0]}
+            </div>
+          </div>
+          <div className="flex-1">
+            <div className="font-medium text-gray-900">{user.kullaniciAdi}</div>
+            <div className="text-sm text-gray-500">{user.email}</div>
+            {isAdmin && (
+              <div className="text-xs text-blue-600 mt-1">
+                {user.role}
+              </div>
+            )}
           </div>
         </div>
+      </div>
+    ))}
+  </div>
+    </div>
 
-        <div className="flex-1 overflow-y-auto">
-          {users.map((user) => (
-            <div
-              key={user.userId}
-              onClick={() => handleUserSelect(user)}
-              className="p-4 border-b border-gray-50 hover:bg-gray-50 cursor-pointer transition-colors active:bg-gray-100"
+    <div className={`${currentView === 'discussions' ? 'flex' : 'hidden'} ${selectedUser ? 'md:flex' : 'md:hidden'} w-full md:w-80 bg-white flex-col border-r border-gray-200`}>
+      <div className="p-4 border-b border-gray-100">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="font-semibold text-gray-900">
+              {isAdmin 
+                ? `${selectedUser?.kullaniciAdi}'s Discussions` 
+                : `Chat with ${selectedUser?.kullaniciAdi}`
+              }
+            </h3>
+            <p className="text-sm text-gray-500">
+              {isAdmin 
+                ? 'All discussions involving this user' 
+                : 'Your conversations together'
+              }
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={() => setCurrentView('users')}
+              className="p-2 text-gray-500 hover:bg-gray-100 rounded-lg transition"
             >
-              <div className="flex items-center space-x-3">
-                <div className="relative">
-                  <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-semibold">
-                    {user.kullaniciAdi[0]}
+              <ArrowLeft className="w-4 h-4" />
+            </button>
+            {selectedUser && (
+              <button 
+                onClick={() => setShowCreateDiscussion(true)} 
+                className="p-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition"
+              >
+                <Plus className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-2">
+        {discussions.length === 0 ? (
+          <div className="p-4 text-center text-gray-500">
+            <div className="text-sm">
+              {isAdmin 
+                ? 'No discussions found for this user' 
+                : 'No conversations yet. Start a new discussion!'
+              }
+            </div>
+          </div>
+        ) : (
+          discussions.map((discussion) => (
+            <div
+              key={discussion.id}
+              onClick={() => handleDiscussionSelect(discussion)}
+              className={`flex items-center justify-between w-full p-4 rounded-xl mb-2 cursor-pointer transition-all ${
+                getStatusBackgroundColor(discussion.lastTaskStatus, selectedDiscussion?.id === discussion.id)
+              }`}
+            >
+              <div className="flex-1">
+                <div className="font-medium text-gray-900 mb-1">{discussion.title}</div>
+                <div className="text-sm text-gray-500 mb-2 line-clamp-2">{discussion.description}</div>
+                
+                <div className="text-xs text-gray-600 mb-1">
+                  <span className="font-medium">From:</span> {discussion.senderName} 
+                  <span className="mx-1">→</span>
+                  <span className="font-medium">To:</span> {discussion.receiverName}
+                </div>
+                
+                <div className="text-xs text-gray-400">{new Date(discussion.createdAt).toLocaleString()}</div>
+                
+                {discussion.lastTaskStatus !== undefined && discussion.lastTaskStatus !== null && (
+                  <div className="text-xs mt-1">
+                    <span className={`px-2 py-1 rounded-full text-white text-xs ${
+                      discussion.lastTaskStatus === TaskStatusBg.Backlog ? 'bg-gray-500' :
+                      discussion.lastTaskStatus === TaskStatusBg.ToDo ? 'bg-purple-500' :
+                      discussion.lastTaskStatus === TaskStatusBg.InProgress ? 'bg-blue-500' :
+                      discussion.lastTaskStatus === TaskStatusBg.InReview ? 'bg-yellow-500' :
+                      discussion.lastTaskStatus === TaskStatusBg.Done ? 'bg-green-500' : 'bg-gray-500'
+                    }`}>
+                      {getTaskStatusText(discussion.lastTaskStatus)}
+                    </span>
                   </div>
-                  {/* <div className="absolute -bottom-0.5 -right-0.5">
-                    <StatusIndicator status={user.status} />
-                  </div> */}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="font-medium text-gray-900 truncate">{user.kullaniciAdi}</div>
-                  <div className="text-sm text-gray-500 truncate">{user.email}</div>
-                  {/* <div className="text-xs text-gray-400 mt-0.5">{user.lastSeen}</div> */}
-                </div>
-                {/* {user.status === 'online' && (
-                  <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                )} */}
+                )}
+              </div>
+              
+              <div className="flex items-center gap-2 ml-4">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    navigate(`/reports/${discussion.id}`);
+                  }}
+                  className="p-2 rounded-lg bg-blue-500 hover:bg-blue-600 text-white transition-colors duration-200 flex items-center justify-center"
+                  title="View Tasks Report"
+                >
+                  <ListChecksIcon size={16} />
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDownloadExcel(discussion.id, discussion.title);
+                  }}
+                  className="p-2 rounded-lg bg-green-500 hover:bg-green-600 text-white transition-colors duration-200 flex items-center justify-center"
+                  title="Download Tasks Excel"
+                >
+                  <DownloadIcon size={16} />
+                </button>
               </div>
             </div>
-          ))}
-        </div>
+          ))
+        )}
       </div>
-
-      
-      <div className={`${currentView === 'discussions' ? 'flex' : 'hidden'} ${selectedUser ? 'md:flex' : 'md:hidden'} w-full md:w-80 bg-white flex-col border-r border-gray-200`}>
-        {/* Header */}
-        <div className="p-4 border-b border-gray-100">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="font-semibold text-gray-900">{selectedUser?.kullaniciAdi}</h3>
-              <p className="text-sm text-gray-500">Discussions</p>
-            </div>
-            <button onClick={() => setShowCreateDiscussion(true)} className="p-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition">
-              <Plus className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-2">
-        {discussions.map((discussion) => (
-          <div
-            key={discussion.id}
-            onClick={() => handleDiscussionSelect(discussion)}
-            className={`flex items-center justify-between w-full p-4 rounded-xl mb-2 cursor-pointer transition-all ${
-              getStatusBackgroundColor(discussion.lastTaskStatus, selectedDiscussion?.id === discussion.id)
-            }`}
-          >
-            <div>
-              <div className="font-medium text-gray-900 mb-1">{discussion.title}</div>
-              <div className="text-sm text-gray-500 mb-2 line-clamp-2">{discussion.description}</div>
-              <div className="text-xs text-gray-400">{discussion.createdAt.toLocaleString()}</div>
-              {discussion.lastTaskStatus !== undefined && discussion.lastTaskStatus !== null && (
-                <div className="text-xs mt-1">
-                  <span className={`px-2 py-1 rounded-full text-white text-xs ${
-                    discussion.lastTaskStatus === TaskStatusBg.Backlog ? 'bg-gray-500' :
-                    discussion.lastTaskStatus === TaskStatusBg.ToDo ? 'bg-purple-500' :
-                    discussion.lastTaskStatus === TaskStatusBg.InProgress ? 'bg-blue-500' :
-                    discussion.lastTaskStatus === TaskStatusBg.InReview ? 'bg-yellow-500' :
-                    discussion.lastTaskStatus === TaskStatusBg.Done ? 'bg-green-500' : 'bg-gray-500'
-                  }`}>
-                    {getTaskStatusText(discussion.lastTaskStatus)}
-                  </span>
-                </div>
-              )}
-            </div>
-            <div className="flex items-center gap-2 ml-4">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  navigate(`/reports/${discussion.id}`);
-                }}
-                className="p-2 rounded-lg bg-blue-500 hover:bg-blue-600 text-white transition-colors duration-200 flex items-center justify-center"
-                title="View Tasks Report"
-              >
-                <ListChecksIcon size={16} />
-              </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleDownloadExcel(discussion.id, discussion.title);
-                }}
-                className="p-2 rounded-lg bg-green-500 hover:bg-green-600 text-white transition-colors duration-200 flex items-center justify-center"
-                title="Download Tasks Excel"
-              >
-                <DownloadIcon size={16} />
-              </button>
-            </div>
-          </div>
-        ))}
-        </div>
-      </div>
+    </div>
 
       <div className={`${currentView === 'chat' ? 'flex' : 'hidden'} ${selectedDiscussion ? 'md:flex' : 'md:hidden'} flex-1 flex-col bg-gray-50`}>
         <div className="bg-white border-b border-gray-200 p-4">

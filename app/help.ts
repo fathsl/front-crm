@@ -7,7 +7,7 @@ export interface User {
   telefon: string;
   password?: string;
   durum: string;
-  yetkiTuru: Role;
+  role: string;
   fullName?: string;
   loginTime?: number;
 }
@@ -291,6 +291,8 @@ export interface CreateDiscussionRequest {
     description: string;
     createdByUserId: number;
     participantUserIds: number[];
+    senderId: number;
+    receiverId: number;
 }
 
 export enum MessageType {
