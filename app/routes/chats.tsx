@@ -41,10 +41,22 @@ enum MessageType {
   Voice = 4,
 }
 
+interface DiscussionWithLastTask extends Discussion {
+  lastTaskStatus?: TaskStatusBg;
+}
+
+enum TaskStatusBg {
+  Backlog = 0,
+  ToDo = 1,
+  InProgress = 2,
+  InReview = 3,
+  Done = 4
+}
+
 const ChatApplication: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
-  const [discussions, setDiscussions] = useState<Discussion[]>([]);
+  const [discussions, setDiscussions] = useState<DiscussionWithLastTask[]>([]);
   const [selectedDiscussion, setSelectedDiscussion] = useState<Discussion | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
@@ -81,6 +93,9 @@ const ChatApplication: React.FC = () => {
   const [showTaskDropdown, setShowTaskDropdown] = useState(false);
   const [selectedClients, setSelectedClients] = useState<Client[]>([]);
   const [selectedProjects, setSelectedProjects] = useState<Project[]>([]);
+  const [selectedUsers, setSelectedUsers] = useState<User[]>([]);
+  const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
   const [sending, setSending] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [taskData, setTaskData] = useState({
@@ -117,6 +132,57 @@ const ChatApplication: React.FC = () => {
       2: TaskPriority.High
     };
     return priorityMap[priorityNum as keyof typeof priorityMap] || TaskPriority.Medium;
+  };
+
+  const getStatusBackgroundColor = (status?: TaskStatusBg, isSelected?: boolean) => {
+    if (isSelected) {
+      switch (status) {
+        case TaskStatusBg.Backlog:
+          return 'bg-gray-100 border-2 border-gray-300';
+        case TaskStatusBg.ToDo:
+          return 'bg-purple-100 border-2 border-purple-300';
+        case TaskStatusBg.InProgress:
+          return 'bg-blue-100 border-2 border-blue-300';
+        case TaskStatusBg.InReview:
+          return 'bg-yellow-100 border-2 border-yellow-300';
+        case TaskStatusBg.Done:
+          return 'bg-green-100 border-2 border-green-300';
+        default:
+          return 'bg-blue-50 border-2 border-blue-200';
+      }
+    }
+    
+    switch (status) {
+      case TaskStatusBg.Backlog:
+        return 'bg-gray-50 hover:bg-gray-100';
+      case TaskStatusBg.ToDo:
+        return 'bg-purple-50 hover:bg-purple-100';
+      case TaskStatusBg.InProgress:
+        return 'bg-blue-50 hover:bg-blue-100';
+      case TaskStatusBg.InReview:
+        return 'bg-yellow-50 hover:bg-yellow-100';
+      case TaskStatusBg.Done:
+        return 'bg-green-50 hover:bg-green-100';
+      default:
+        return 'hover:bg-gray-50 active:bg-gray-100';
+    }
+  };
+
+  const getTaskStatusText = (status: TaskStatusBg): string => {
+    switch (status) {
+      case TaskStatusBg.Backlog:
+        return 'Backlog';
+      case TaskStatusBg.ToDo:
+        return 'To Do';
+      case TaskStatusBg.InProgress:
+        return 'In Progress';
+      case TaskStatusBg.InReview:
+        return 'In Review';
+      case TaskStatusBg.Done:
+        return 'Done';
+      default:
+        return 'Unknown';
+    }
   };
 
   const fetchUsers = async () => {
@@ -320,128 +386,6 @@ const ChatApplication: React.FC = () => {
         setUploading(false);
     }
 };
-
-  const handleTaskSend = async () => {
-    if ((!taskContent.trim() && !taskFile && !taskAudioBlob) || !selectedDiscussion || !currentUser) {
-      console.error('Missing required fields for task message');
-      return;
-    }
-    
-    setSending(true);
-    
-    interface TaskMessagePayload {
-      title: string;
-      description: string;
-      priority: TaskPriority;
-      dueDate: string | null;
-      assignedUsers: number[];
-      discussionId: number;
-      senderId: number;
-      receiverId: number | null;
-      content: string;
-      messageType: MessageType;
-      taskStatus: TaskStatus;
-      taskTitle: string;
-      fileSize?: number;
-      fileName?: string;
-      fileType?: string;
-      duration?: number;
-    }
-
-    try {
-      const taskTitle = taskContent.split('\n')[0].substring(0, 100);
-      const baseMessage: TaskMessagePayload = {
-        title: taskTitle,
-        description: taskContent,
-        priority: TaskPriority.Medium,
-        dueDate: null,
-        assignedUsers: [],
-        discussionId: selectedDiscussion.id,
-        senderId: currentUser.userId,
-        receiverId: selectedUser?.userId || null,
-        content: taskContent,
-        messageType: MessageType.Task,
-        taskStatus: taskStatus,
-        taskTitle: taskTitle
-      };
-
-      let response: Response;
-
-      if (taskFile) {
-        const formData = new FormData();
-        const messageData: TaskMessagePayload = {
-          ...baseMessage,
-          fileSize: taskFile.size,
-          fileName: taskFile.name,
-          fileType: taskFile.type
-        };
-        formData.append('message', JSON.stringify(messageData));
-        formData.append('file', taskFile);
-        
-        response = await fetch(`${baseUrl}/api/Chat/messages/send-with-file`, {
-          method: 'POST',
-          body: formData
-        });
-      } else if (taskAudioBlob) {
-        const formData = new FormData();
-        const messageData: TaskMessagePayload = {
-          ...baseMessage,
-          duration: Math.floor(taskRecordingTime / 1000),
-          fileSize: taskAudioBlob.size,
-          fileName: 'voice-message.webm',
-          fileType: 'audio/webm'
-        };
-        formData.append('message', JSON.stringify(messageData));
-        formData.append('audioFile', taskAudioBlob, 'voice-message.webm');
-        
-        response = await fetch(`${baseUrl}/api/Chat/messages/send-with-voice`, {
-          method: 'POST',
-          body: formData
-        });
-      } else {
-        response = await fetch(`${baseUrl}/api/Chat/messages/send`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            ...baseMessage,
-            messageType: MessageType.Task
-          })
-        });
-      }
-  
-      if (response.ok) {
-        const result = await response.json();
-        setMessages(prev => [...prev, {
-          ...result,
-          taskId: result.id,
-          taskTitle: result.taskTitle || taskContent.split('\n')[0].substring(0, 100),
-          taskStatus: result.taskStatus || TaskStatus.Backlog,
-          taskPriority: result.taskPriority || TaskPriority.Medium,
-          assignedUserIds: result.assignedUserIds || [],
-          senderName: result.senderName || currentUser?.email || 'User',
-          isEdited: false,
-          timestamp: result.timestamp || new Date().toISOString()
-        }]);
-        
-        setTaskContent('');
-        setTaskFile(null);
-        setTaskAudioBlob(null);
-        setTaskStatus(TaskStatus.Backlog);
-        closeTaskDrawer();
-      } else {
-        const errorText = await response.text();
-        console.error('Server response:', response.status, errorText);
-        throw new Error(`Server returned ${response.status}: ${errorText}`);
-      }
-    } catch (error) {
-      console.error('Error sending task message:', error);
-      alert('Failed to send task. Please try again.');
-    } finally {
-      setSending(false);
-    }
-  };
 
   const sendMessage = async () => {
     if ((!newMessage.trim() && !selectedFile) || !selectedDiscussion || !currentUser) return;
@@ -775,6 +719,11 @@ const ChatApplication: React.FC = () => {
     }
   };
 
+  const filteredUsers = users.filter(user =>
+    user.kullaniciAdi.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (user.email && user.email.toLowerCase().includes(searchTerm.toLowerCase()))
+  );
+
   const statusOptions = [
     { value: TaskStatus.Backlog, label: 'Backlog', icon: Clock, color: 'text-yellow-600 bg-yellow-100' },
     { value: TaskStatus.ToDo, label: 'Todo', icon: AlertCircle, color: 'text-blue-600 bg-blue-100' },
@@ -833,16 +782,6 @@ const ChatApplication: React.FC = () => {
     setTaskContent('');
     setSelectedFile(null);
     setAudioBlob(null);
-    setTaskStatus(TaskStatus.Backlog);
-  };
-
-  const handleTaskDropdownSelect = (type : MessageType) => {
-    setTaskDrawerType(type);
-    setTaskDrawerOpen(true);
-    setShowTaskDropdown(false);
-    setTaskContent('');
-    setTaskFile(null);
-    setTaskAudioBlob(null);
     setTaskStatus(TaskStatus.Backlog);
   };
 
@@ -944,6 +883,15 @@ const ChatApplication: React.FC = () => {
           ...result,
           assignedUserIds: result.assignedUserIds || []
         } as Message]);
+
+        if (selectedDiscussion) {
+          setDiscussions(prev => prev.map(disc => 
+            disc.id === selectedDiscussion.id 
+              ? { ...disc, lastTaskStatus: Number(taskStatus) as unknown as TaskStatusBg }
+              : disc
+          ));
+        }
+
         closeTaskDrawer();
       } else {
         throw new Error('Failed to send task message');
@@ -1354,22 +1302,33 @@ const ChatApplication: React.FC = () => {
         </div>
 
         <div className="flex-1 overflow-y-auto p-2">
-          {discussions.map((discussion) => (
-              <div
-              key={discussion.id}
-              onClick={() => handleDiscussionSelect(discussion)}
-              className={`flex items-center justify-between w-full p-4 rounded-xl mb-2 cursor-pointer transition-all ${
-                selectedDiscussion?.id === discussion.id
-                  ? 'bg-blue-50 border-2 border-blue-200'
-                  : 'hover:bg-gray-50 active:bg-gray-100'
-              }`}
-            >
-              <div>
+        {discussions.map((discussion) => (
+          <div
+            key={discussion.id}
+            onClick={() => handleDiscussionSelect(discussion)}
+            className={`flex items-center justify-between w-full p-4 rounded-xl mb-2 cursor-pointer transition-all ${
+              getStatusBackgroundColor(discussion.lastTaskStatus, selectedDiscussion?.id === discussion.id)
+            }`}
+          >
+            <div>
               <div className="font-medium text-gray-900 mb-1">{discussion.title}</div>
               <div className="text-sm text-gray-500 mb-2 line-clamp-2">{discussion.description}</div>
               <div className="text-xs text-gray-400">{discussion.createdAt.toLocaleString()}</div>
-              </div>
-              <div className="flex items-center gap-2 ml-4">
+              {discussion.lastTaskStatus !== undefined && discussion.lastTaskStatus !== null && (
+                <div className="text-xs mt-1">
+                  <span className={`px-2 py-1 rounded-full text-white text-xs ${
+                    discussion.lastTaskStatus === TaskStatusBg.Backlog ? 'bg-gray-500' :
+                    discussion.lastTaskStatus === TaskStatusBg.ToDo ? 'bg-purple-500' :
+                    discussion.lastTaskStatus === TaskStatusBg.InProgress ? 'bg-blue-500' :
+                    discussion.lastTaskStatus === TaskStatusBg.InReview ? 'bg-yellow-500' :
+                    discussion.lastTaskStatus === TaskStatusBg.Done ? 'bg-green-500' : 'bg-gray-500'
+                  }`}>
+                    {getTaskStatusText(discussion.lastTaskStatus)}
+                  </span>
+                </div>
+              )}
+            </div>
+            <div className="flex items-center gap-2 ml-4">
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -1391,8 +1350,8 @@ const ChatApplication: React.FC = () => {
                 <DownloadIcon size={16} />
               </button>
             </div>
-            </div>
-          ))}
+          </div>
+        ))}
         </div>
       </div>
 
@@ -1781,27 +1740,190 @@ const ChatApplication: React.FC = () => {
                 </div>
               </div>
 
-              <div className="bg-slate-50 rounded-lg p-3 space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="text-sm text-slate-600">Assigned to:</div>
-                <select
-                  value={selectedUser?.userId || ''}
-                  onChange={(e) => {
-                    const userId = parseInt(e.target.value);
-                    const user = users.find(u => u.userId === userId);
-                    setSelectedUser(user || null);
-                  }}
-                  className="text-sm border border-slate-300 rounded px-2 py-1 bg-white min-w-[150px]"
-                >
-                  <option value="">No assignee</option>
-                  {users.map(user => (
-                    <option key={user.userId} value={user.userId}>
-                      {user.kullaniciAdi}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              
+              <div className="bg-slate-50 rounded-lg p-4 space-y-3">
+                <div className="space-y-2">
+                  <div className="text-sm font-medium text-slate-700">Assigned to:</div>
+                  
+                  <div className="relative">
+                    <div
+                      onClick={() => setIsUserDropdownOpen(!isUserDropdownOpen)}
+                      className="min-h-[42px] w-full border border-slate-300 rounded-lg px-3 py-2 bg-white cursor-pointer hover:border-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all duration-200 flex items-center justify-between"
+                    >
+                      <div className="flex-1 flex flex-wrap gap-2">
+                        {selectedUsers.length === 0 ? (
+                          <span className="text-slate-500 text-sm">Select assignees...</span>
+                        ) : (
+                          selectedUsers.map(user => (
+                            <span
+                              key={user.userId}
+                              className="inline-flex items-center gap-1 bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full"
+                            >
+                              {user.kullaniciAdi}
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedUsers(prev => prev.filter(u => u.userId !== user.userId));
+                                }}
+                                className="hover:bg-blue-200 rounded-full p-0.5 transition-colors"
+                              >
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                              </button>
+                            </span>
+                          ))
+                        )}
+                      </div>
+                      <svg
+                        className={`w-5 h-5 text-slate-400 transition-transform duration-200 ${
+                          isUserDropdownOpen ? 'rotate-180' : ''
+                        }`}
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </div>
+
+                    {isUserDropdownOpen && (
+                      <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-300 rounded-lg shadow-lg z-50 max-h-60 overflow-hidden">
+                        <div className="p-3">
+                          <div className="relative mb-3">
+                            <input
+                              type="text"
+                              placeholder="Search users..."
+                              value={searchTerm}
+                              onChange={(e) => setSearchTerm(e.target.value)}
+                              className="w-full pl-9 pr-4 py-2 text-sm border border-slate-300 rounded-md focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all"
+                              autoFocus
+                            />
+                            <svg 
+                              className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400"
+                              fill="none" 
+                              stroke="currentColor" 
+                              viewBox="0 0 24 24"
+                            >
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                            </svg>
+                            {searchTerm && (
+                              <button
+                                onClick={() => setSearchTerm('')}
+                                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                              </button>
+                            )}
+                          </div>
+
+                          <div className="flex items-center justify-between mb-2 pb-2 border-b border-slate-200">
+                            <span className="text-sm font-medium text-slate-700">Select Users</span>
+                            <div className="flex gap-2">
+                              {filteredUsers.length > 0 && (
+                                <button
+                                  onClick={() => {
+                                    const newUsers = filteredUsers.filter(user => 
+                                      !selectedUsers.some(selected => selected.userId === user.userId)
+                                    );
+                                    setSelectedUsers(prev => [...prev, ...newUsers]);
+                                  }}
+                                  className="text-xs text-blue-600 hover:text-blue-800 px-2 py-1 hover:bg-blue-50 rounded font-medium"
+                                >
+                                  Select All
+                                </button>
+                              )}
+                              <button
+                                onClick={() => setSelectedUsers([])}
+                                className="text-xs text-slate-500 hover:text-slate-700 px-2 py-1 hover:bg-slate-100 rounded"
+                              >
+                                Clear All
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                          
+                        <div className="max-h-40 overflow-y-auto px-3 pb-3">
+                          {filteredUsers.map(user => {
+                            const isSelected = selectedUsers.some(u => u.userId === user.userId);
+                            return (
+                              <div
+                                key={user.userId}
+                                onClick={() => {
+                                  if (isSelected) {
+                                    setSelectedUsers(prev => prev.filter(u => u.userId !== user.userId));
+                                  } else {
+                                    setSelectedUsers(prev => [...prev, user]);
+                                  }
+                                }}
+                                className={`flex items-center gap-3 p-2 rounded-md cursor-pointer transition-colors ${
+                                  isSelected 
+                                    ? 'bg-blue-50 text-blue-900' 
+                                    : 'hover:bg-slate-50 text-slate-700'
+                                }`}
+                              >
+                                <div className={`w-4 h-4 border-2 rounded flex items-center justify-center ${
+                                  isSelected 
+                                    ? 'bg-blue-500 border-blue-500' 
+                                    : 'border-slate-300'
+                                }`}>
+                                  {isSelected && (
+                                    <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                    </svg>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-2 flex-1">
+                                  <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white text-sm font-medium">
+                                    {user.kullaniciAdi.charAt(0).toUpperCase()}
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="text-sm font-medium truncate">{user.kullaniciAdi}</div>
+                                    {user.email && (
+                                      <div className="text-xs text-slate-500 truncate">{user.email}</div>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                          
+                          {filteredUsers.length === 0 && searchTerm && (
+                            <div className="text-center text-slate-500 text-sm py-4">
+                              <svg className="w-8 h-8 mx-auto mb-2 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                              </svg>
+                              No users found for "{searchTerm}"
+                            </div>
+                          )}
+                          
+                          {users.length === 0 && (
+                            <div className="text-center text-slate-500 text-sm py-4">
+                              <svg className="w-8 h-8 mx-auto mb-2 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 6.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />
+                              </svg>
+                              No users available
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {selectedUsers.length > 0 && (
+                    <div className="flex items-center justify-between text-xs text-slate-600 bg-white px-3 py-2 rounded border">
+                      <span>{selectedUsers.length} user{selectedUsers.length !== 1 ? 's' : ''} selected</span>
+                      <button
+                        onClick={() => setSelectedUsers([])}
+                        className="text-blue-600 hover:text-blue-800 font-medium"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  )}
+                </div>
+
               <div>
                 <div className="text-sm text-slate-600 mb-2">Clients:</div>
                 <div className="space-y-2">

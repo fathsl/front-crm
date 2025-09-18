@@ -25,9 +25,9 @@ const Sidebar: FC<SidebarProps> = ({
   const navItems: NavItem[] = [
     { id: 'projects', label: 'Projects', icon: CheckSquare2Icon , category: 'Office Managment', href: '/projects' },
     { id: 'reporting', label: 'Reporting', icon: BarChart3, category: 'Primary', href: '/reporting' },
-    { id: 'orders', label: 'My Orders', icon: ShoppingBag, category: 'Primary', href: '/orders' },
+    /* { id: 'orders', label: 'My Orders', icon: ShoppingBag, category: 'Primary', href: '/orders' }, */
     { id: 'clients', label: 'Clients', icon: UsersRoundIcon, category: 'Primary', href: '/clients' },
-    { id: 'accounting', label: 'Accounting', icon: Calculator, category: 'Primary', href: '/accounting' },
+    /* { id: 'accounting', label: 'Accounting', icon: Calculator, category: 'Primary', href: '/accounting' },
     { id: 'factory', label: 'Factory', icon: Factory, category: 'Primary', href: '/factory' },
     { id: 'control', label: 'Control', icon: Settings, category: 'Management', href: '/control' },
     { id: 'add-customer', label: 'Add Customer', icon: UserPlus, category: 'Management', href: '/customers/new' },
@@ -37,11 +37,11 @@ const Sidebar: FC<SidebarProps> = ({
     { id: 'create-offer', label: 'Create Offer', icon: Percent, category: 'Operations', href: '/offers/new' },
     { id: 'add-component', label: 'Add Component', icon: Package, category: 'Operations', href: '/components/new' },
     { id: 'logistics-history', label: 'Logistics History', icon: Truck, category: 'Operations', href: '/logistics/history' },
-    { id: 'prescriptions', label: 'Prescriptions', icon: ClipboardList, category: 'Tools', href: '/prescriptions' },
+    { id: 'prescriptions', label: 'Prescriptions', icon: ClipboardList, category: 'Tools', href: '/prescriptions' }, */
     { id: 'users', label: 'Users', icon: UsersIcon, category: 'Tools', href: '/users' },
     { id: 'meetings', label: 'Meetings', icon: MessageSquare, category: 'Communication', href: '/meetings' },
     { id: 'chats', label: 'Chats', icon: MessageCircle, category: 'Communication', href: '/chats' },
-    { id: 'bulk-mail', label: 'Bulk Mail', icon: Mail, category: 'Communication', href: '/mail' },
+    /* { id: 'bulk-mail', label: 'Bulk Mail', icon: Mail, category: 'Communication', href: '/mail' }, */
   ];
 
   const groupedNavItems = navItems.reduce((acc, item) => {
