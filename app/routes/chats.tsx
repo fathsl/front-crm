@@ -120,7 +120,7 @@ const ChatApplication: React.FC = () => {
   const [taskMediaRecorder, setTaskMediaRecorder] = useState<MediaRecorder | null>(null);
   const isRecordingCanceled = useRef(false);
   const navigate = useNavigate();
-  const baseUrl = "https://api-crm-tegd.onrender.com/";
+  const baseUrl = "https://api-crm-tegd.onrender.com";
   const isAdmin = currentUser?.role === "Yonetici";
 
   const getPriorityFromNumber = (priorityNum: number): TaskPriority => {
