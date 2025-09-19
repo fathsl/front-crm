@@ -92,13 +92,12 @@ const ChatApplication: React.FC = () => {
   const [taskAudioBlob, setTaskAudioBlob] = useState<Blob | null>(null);
   const [taskRecording, setTaskRecording] = useState(false);
   const [taskRecordingTime, setTaskRecordingTime] = useState(0);
-  const [showTaskDropdown, setShowTaskDropdown] = useState(false);
   const [selectedClients, setSelectedClients] = useState<Client[]>([]);
   const [selectedProjects, setSelectedProjects] = useState<Project[]>([]);
   const [selectedUsers, setSelectedUsers] = useState<User[]>([]);
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
+  const [isCreatingDiscussion, setIsCreatingDiscussion] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [sending, setSending] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -109,9 +108,7 @@ const ChatApplication: React.FC = () => {
   const isRecordingCanceled = useRef(false);
   const navigate = useNavigate();
   const baseUrl = "https://api-crm-tegd.onrender.com";
-  const isAdmin = currentUser?.role === "Yonetici";
-  console.log("isAdmin", isAdmin);
-  
+  const isAdmin = currentUser?.role === "Yonetici";  
 
   const getPriorityFromNumber = (priorityNum: number): TaskPriority => {
     const priorityMap = {
@@ -236,7 +233,7 @@ const ChatApplication: React.FC = () => {
     setLoading(true);
     try {
       let url = `${baseUrl}/api/Chat/discussions/${currentUserId}`;
-      
+     
       if (selectedUserId !== undefined) {
         if (isAdmin) {
           url = `${baseUrl}/api/Chat/discussions/admin/${currentUserId}/${selectedUserId}`;
@@ -244,11 +241,30 @@ const ChatApplication: React.FC = () => {
           url = `${baseUrl}/api/Chat/discussions/${currentUserId}/${selectedUserId}`;
         }
       }
-      
+     
       const response = await fetch(url);
       if (response.ok) {
         const data = await response.json();
-        setDiscussions(data);
+        
+        const uniqueDiscussions = data.filter((discussion : Discussion, index : number, self : Discussion[]) => 
+          index === self.findIndex((d : Discussion) => d.id === discussion.id)
+        );
+        
+        let filteredDiscussions = uniqueDiscussions;
+        
+        if (selectedUserId !== undefined && !isAdmin) {
+          filteredDiscussions = uniqueDiscussions.filter((discussion : Discussion) => {
+            const participants = new Set([
+              discussion.createdByUserId,
+              discussion.senderId || discussion.createdByUserId,
+              discussion.receiverId
+            ].filter(id => id && id !== 0)); 
+            
+            return participants.has(currentUserId) && participants.has(selectedUserId);
+          });
+        }
+        
+        setDiscussions(filteredDiscussions);
       } else {
         throw new Error('Failed to fetch discussions');
       }
@@ -272,7 +288,9 @@ const ChatApplication: React.FC = () => {
   }, []);
 
   const createDiscussion = async () => {
-    if (!selectedUser || !newDiscussionTitle.trim()) return;
+    if (!selectedUser || !newDiscussionTitle.trim() || isCreatingDiscussion) return;
+  
+    setIsCreatingDiscussion(true);
   
     const request: CreateDiscussionRequest = {
       title: newDiscussionTitle,
@@ -299,11 +317,16 @@ const ChatApplication: React.FC = () => {
         setNewDiscussionDescription('');
         setShowCreateDiscussion(false);
         setSelectedDiscussion(newDiscussion);
+      } else {
+        throw new Error('Failed to create discussion');
       }
     } catch (error) {
       console.error('Error creating discussion:', error);
+    } finally {
+      setIsCreatingDiscussion(false);
     }
   };
+  
   
   const handleFileChange = (e : React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1245,58 +1268,58 @@ const ChatApplication: React.FC = () => {
       </div>
 
     <div className={`${currentView === 'users' ? 'flex' : 'hidden'} md:flex w-full md:w-80 bg-white flex-col border-r border-gray-200`}>
-  <div className="p-4 border-b border-gray-100">
-    <div className="flex items-center justify-between">
-      <div>
-        <h2 className="font-semibold text-gray-900">
-          {isAdmin ? 'All Users' : 'Select User to Chat'}
-        </h2>
-        <p className="text-sm text-gray-500">
-          {isAdmin ? 'View any user\'s discussions' : 'Start or continue conversations'}
-        </p>
-      </div>
-    </div>
-
-    <div className="mt-3">
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-        <input
-          type="text"
-          placeholder="Search users..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-        />
-      </div>
-    </div>
-  </div>
-
-  <div className="flex-1 overflow-y-auto">
-    {filteredUsers.map((user) => (
-      <div
-        key={user.userId}
-        onClick={() => handleUserSelect(user)}
-        className="p-4 border-b border-gray-50 hover:bg-gray-50 cursor-pointer transition-colors active:bg-gray-100"
-      >
-        <div className="flex items-center space-x-3">
-          <div className="relative">
-            <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-semibold">
-              {user.kullaniciAdi[0]}
+        <div className="p-4 border-b border-gray-100">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="font-semibold text-gray-900">
+                {isAdmin ? 'All Users' : 'Select User to Chat'}
+              </h2>
+              <p className="text-sm text-gray-500">
+                {isAdmin ? 'View any user\'s discussions' : 'Start or continue conversations'}
+              </p>
             </div>
           </div>
-          <div className="flex-1">
-            <div className="font-medium text-gray-900">{user.kullaniciAdi}</div>
-            <div className="text-sm text-gray-500">{user.email}</div>
-            {isAdmin && (
-              <div className="text-xs text-blue-600 mt-1">
-                {user.role}
-              </div>
-            )}
+
+          <div className="mt-3">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+              <input
+                type="text"
+                placeholder="Search users..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
           </div>
-        </div>
       </div>
-    ))}
-  </div>
+
+      <div className="flex-1 overflow-y-auto">
+        {filteredUsers.map((user) => (
+          <div
+            key={user.userId}
+            onClick={() => handleUserSelect(user)}
+            className="p-4 border-b border-gray-50 hover:bg-gray-50 cursor-pointer transition-colors active:bg-gray-100"
+          >
+            <div className="flex items-center space-x-3">
+              <div className="relative">
+                <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-semibold">
+                  {user.kullaniciAdi[0]}
+                </div>
+              </div>
+              <div className="flex-1">
+                <div className="font-medium text-gray-900">{user.kullaniciAdi}</div>
+                <div className="text-sm text-gray-500">{user.email}</div>
+                {isAdmin && (
+                  <div className="text-xs text-blue-600 mt-1">
+                    {user.role}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
 
     <div className={`${currentView === 'discussions' ? 'flex' : 'hidden'} ${selectedUser ? 'md:flex' : 'md:hidden'} w-full md:w-80 bg-white flex-col border-r border-gray-200`}>
@@ -1446,7 +1469,7 @@ const ChatApplication: React.FC = () => {
                     ? "justify-end"
                     : "justify-start"
                 }`}
-              >        
+              >
               <div className={`max-w-xs sm:max-w-sm lg:max-w-md`}>
                 {message.messageType === 3 ? (
                   <TaskMessage 
@@ -1729,11 +1752,23 @@ const ChatApplication: React.FC = () => {
               />
             </div>
             <div className="flex space-x-3 mt-6">
-              <button
+            <button 
                 onClick={createDiscussion}
-                className="flex-1 bg-gradient-to-r from-blue-500 to-purple-600 text-white py-3 rounded-xl hover:from-blue-600 hover:to-purple-700 transition font-medium"
+                disabled={!newDiscussionTitle.trim() || isCreatingDiscussion}
+                className={`px-4 py-2 rounded-lg text-white font-medium transition-colors ${
+                  isCreatingDiscussion || !newDiscussionTitle.trim()
+                    ? 'bg-gray-400 cursor-not-allowed' 
+                    : 'bg-blue-500 hover:bg-blue-600'
+                }`}
               >
-                Create
+                {isCreatingDiscussion ? (
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    Creating...
+                  </div>
+                ) : (
+                  'Create Discussion'
+                )}
               </button>
               <button
                 onClick={() => setShowCreateDiscussion(false)}

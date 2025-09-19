@@ -326,6 +326,8 @@ export interface Discussion {
     participantUserIds: number[];
     createdAt : Date;
     updatedAt : Date;
+    senderId : number;
+    receiverId : number;
 }
 
 export const formatFileSize = (bytes: number): string => {
