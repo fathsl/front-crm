@@ -85,27 +85,27 @@ export const TaskMessage = ({
   const statusConfig = {
     [TaskStatus.Backlog]: {
       icon: Clock,
-      color: 'bg-yellow-100 text-yellow-800 border-yellow-200',
+      color: 'bg-gray-100 text-gray-800 border-gray-200',
       label: 'Backlog',
-      bgColor: 'bg-yellow-50'
+      bgColor: 'bg-gray-50'
     },
     [TaskStatus.ToDo]: {
       icon: Clock,
-      color: 'bg-blue-100 text-blue-800 border-blue-200',
+      color: 'bg-yellow-100 text-yellow-800 border-yellow-200',
       label: 'To Do',
-      bgColor: 'bg-blue-50'
+      bgColor: 'bg-yellow-50'
     },
     [TaskStatus.InProgress]: {
       icon: AlertCircle,
-      color: 'bg-purple-100 text-purple-800 border-purple-200',
+      color: 'bg-blue-100 text-blue-800 border-blue-200',
       label: 'In Progress',
-      bgColor: 'bg-purple-50'
+      bgColor: 'bg-blue-50'
     },
     [TaskStatus.InReview]: {
       icon: AlertCircle,
-      color: 'bg-indigo-100 text-indigo-800 border-indigo-200',
+      color: 'bg-violet-100 text-violet-800 border-violet-200',
       label: 'In Review',
-      bgColor: 'bg-indigo-50'
+      bgColor: 'bg-violet-50'
     },
     [TaskStatus.Done]: {
       icon: CheckCircle,

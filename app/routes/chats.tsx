@@ -1,5 +1,5 @@
 import { useAtomValue } from "jotai";
-import { AlertCircle, ArrowLeft, CheckCircle, Clock, DownloadIcon, Edit3, ExternalLink, FileIcon, FileText, ListChecksIcon, MessageSquare, Mic, MoreVertical, Paperclip, Pause, Play, Plus, Search, Send, Share, Square, Trash2, Users, Volume2, X, XCircle } from "lucide-react";
+import { AlertCircle, ArrowLeft, CheckCircle, Clock, DownloadIcon, Edit3, ExternalLink, EyeIcon, FileIcon, FileText, Hourglass, ListChecksIcon, MessageSquare, Mic, MoreVertical, Paperclip, Pause, Play, Plus, Search, Send, Share, Square, Trash2, Users, Volume2, X, XCircle } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react"; 
 import { formatFileSize, Role, type SendMessageRequest, type User } from "~/help";
 import type { Client, CreateDiscussionRequest, Project } from "~/help";
@@ -125,27 +125,27 @@ const ChatApplication: React.FC = () => {
         case TaskStatusBg.Backlog:
           return 'bg-gray-100 border-2 border-gray-300';
         case TaskStatusBg.ToDo:
-          return 'bg-purple-100 border-2 border-purple-300';
+          return 'bg-yellow-100 border-2 border-yellow-300';
         case TaskStatusBg.InProgress:
           return 'bg-blue-100 border-2 border-blue-300';
         case TaskStatusBg.InReview:
-          return 'bg-yellow-100 border-2 border-yellow-300';
+          return 'bg-violet-100 border-2 border-violet-300';
         case TaskStatusBg.Done:
           return 'bg-green-100 border-2 border-green-300';
         default:
-          return 'bg-blue-50 border-2 border-blue-200';
+          return 'bg-gray-50 border-2 border-gray-200';
       }
     }
-    
+
     switch (status) {
       case TaskStatusBg.Backlog:
         return 'bg-gray-50 hover:bg-gray-100';
       case TaskStatusBg.ToDo:
-        return 'bg-purple-50 hover:bg-purple-100';
+        return 'bg-yellow-50 hover:bg-yellow-100';
       case TaskStatusBg.InProgress:
         return 'bg-blue-50 hover:bg-blue-100';
       case TaskStatusBg.InReview:
-        return 'bg-yellow-50 hover:bg-yellow-100';
+        return 'bg-violet-50 hover:bg-violet-100';
       case TaskStatusBg.Done:
         return 'bg-green-50 hover:bg-green-100';
       default:
@@ -753,11 +753,11 @@ const ChatApplication: React.FC = () => {
   );
 
   const statusOptions = [
-    { value: TaskStatus.Backlog, label: 'Backlog', icon: Clock, color: 'text-yellow-600 bg-yellow-100' },
-    { value: TaskStatus.ToDo, label: 'Todo', icon: AlertCircle, color: 'text-blue-600 bg-blue-100' },
-    { value: TaskStatus.InProgress, label: 'In Progress', icon: CheckCircle, color: 'text-green-600 bg-green-100' },
-    { value: TaskStatus.InReview, label: 'In Review', icon: AlertCircle, color: 'text-violet-600 bg-violet-100' },
-    { value: TaskStatus.Done, label: 'Done', icon: XCircle, color: 'text-red-600 bg-red-100' }
+    { value: TaskStatus.Backlog, label: 'Backlog', icon: Clock, color: 'text-gray-600 bg-gray-50' },
+    { value: TaskStatus.ToDo, label: 'Todo', icon: AlertCircle, color: 'text-yellow-600 bg-yellow-100' },
+    { value: TaskStatus.InProgress, label: 'In Progress', icon: Hourglass, color: 'text-blue-600 bg-blue-100' },
+    { value: TaskStatus.InReview, label: 'In Review', icon: EyeIcon, color: 'text-violet-600 bg-violet-100' },
+    { value: TaskStatus.Done, label: 'Done', icon: CheckCircle, color: 'text-green-600 bg-green-100' }
   ];
 
   const dropdownOptions = [
@@ -1393,9 +1393,9 @@ const ChatApplication: React.FC = () => {
                   <div className="text-xs mt-1">
                     <span className={`px-2 py-1 rounded-full text-white text-xs ${
                       discussion.lastTaskStatus === TaskStatusBg.Backlog ? 'bg-gray-500' :
-                      discussion.lastTaskStatus === TaskStatusBg.ToDo ? 'bg-purple-500' :
+                      discussion.lastTaskStatus === TaskStatusBg.ToDo ? 'bg-yellow-500' :
                       discussion.lastTaskStatus === TaskStatusBg.InProgress ? 'bg-blue-500' :
-                      discussion.lastTaskStatus === TaskStatusBg.InReview ? 'bg-yellow-500' :
+                      discussion.lastTaskStatus === TaskStatusBg.InReview ? 'bg-violet-500' :
                       discussion.lastTaskStatus === TaskStatusBg.Done ? 'bg-green-500' : 'bg-gray-500'
                     }`}>
                       {getTaskStatusText(discussion.lastTaskStatus)}
