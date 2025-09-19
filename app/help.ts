@@ -285,6 +285,11 @@ export interface Client {
   projectIds?: number[];
 }
 
+export enum DiscussionStatus {
+  NotStarted = 0,
+  InProgress = 1,
+  Completed = 2
+}
 
 export interface CreateDiscussionRequest {
     title: string;
@@ -293,6 +298,7 @@ export interface CreateDiscussionRequest {
     participantUserIds: number[];
     senderId: number;
     receiverId: number;
+    status: DiscussionStatus;
 }
 
 export enum MessageType {

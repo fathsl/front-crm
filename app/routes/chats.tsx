@@ -1,8 +1,8 @@
 import { useAtomValue } from "jotai";
-import { AlertCircle, ArrowLeft, CheckCircle, Clock, DownloadIcon, Edit3, ExternalLink, EyeIcon, FileIcon, FileText, Hourglass, ListChecksIcon, MessageSquare, Mic, MoreVertical, Paperclip, Pause, Play, Plus, Search, Send, Share, Square, Trash2, Users, Volume2, X, XCircle } from "lucide-react";
+import { AlertCircle, ArrowLeft, CheckCircle, Clock, DownloadIcon, Edit3, ExternalLink, EyeIcon, FileIcon, FileText, Hourglass, ListChecksIcon, MessageSquare, Mic, MoreVertical, Paperclip, Pause, Play, Plus, Search, Send, Share, Square, Trash2, Users, UsersIcon, Volume2, X, XCircle } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react"; 
-import { formatFileSize, Role, type SendMessageRequest, type User } from "~/help";
-import type { Client, CreateDiscussionRequest, Project } from "~/help";
+import { formatFileSize, type SendMessageRequest, type User } from "~/help";
+import { DiscussionStatus, type Client, type CreateDiscussionRequest, type Project } from "~/help";
 import type { Discussion } from "~/help";
 import type { Message } from "~/help";
 import { userAtom } from "~/utils/userAtom";
@@ -45,6 +45,7 @@ interface DiscussionWithLastTask extends Discussion {
   lastTaskStatus?: TaskStatusBg;
   senderName?: string;
   receiverName?: string;
+  status?: DiscussionStatus;
 }
 
 enum TaskStatusBg {
@@ -53,6 +54,11 @@ enum TaskStatusBg {
   InProgress = 2,
   InReview = 3,
   Done = 4
+}
+
+export interface UpdateDiscussionStatusRequest {
+  status: number;
+  updatedByUserId: number;
 }
 
 const ChatApplication: React.FC = () => {
@@ -94,9 +100,16 @@ const ChatApplication: React.FC = () => {
   const [taskRecordingTime, setTaskRecordingTime] = useState(0);
   const [selectedClients, setSelectedClients] = useState<Client[]>([]);
   const [selectedProjects, setSelectedProjects] = useState<Project[]>([]);
-  const [selectedUsers, setSelectedUsers] = useState<User[]>([]);
-  const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
   const [isCreatingDiscussion, setIsCreatingDiscussion] = useState(false);
+  const [isClientDropdownOpen, setIsClientDropdownOpen] = useState(false);
+  const [isProjectDropdownOpen, setIsProjectDropdownOpen] = useState(false);
+  const [clientSearchTerm, setClientSearchTerm] = useState('');
+  const [projectSearchTerm, setProjectSearchTerm] = useState('');
+  const [newDiscussionStatus, setNewDiscussionStatus] = useState<DiscussionStatus>(DiscussionStatus.NotStarted);
+  const [updatingDiscussions, setUpdatingDiscussions] = useState<Set<number>>(new Set());
+  const [showUsersDrawer, setShowUsersDrawer] = useState(false);
+  const [selectedUsers, setSelectedUsers] = useState<Set<number>>(new Set());
+  const [selectedDiscussionId, setSelectedDiscussionId] = useState<number | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -107,8 +120,8 @@ const ChatApplication: React.FC = () => {
   const [taskMediaRecorder, setTaskMediaRecorder] = useState<MediaRecorder | null>(null);
   const isRecordingCanceled = useRef(false);
   const navigate = useNavigate();
-  const baseUrl = "https://api-crm-tegd.onrender.com";
-  const isAdmin = currentUser?.role === "Yonetici";  
+  const baseUrl = "https://api-crm-tegd.onrender.com/";
+  const isAdmin = currentUser?.role === "Yonetici";
 
   const getPriorityFromNumber = (priorityNum: number): TaskPriority => {
     const priorityMap = {
@@ -170,6 +183,45 @@ const ChatApplication: React.FC = () => {
     }
   };
 
+  const getDiscussionStatusText = (status: DiscussionStatus): string => {
+    switch (status) {
+      case DiscussionStatus.NotStarted:
+        return 'Not Started';
+      case DiscussionStatus.InProgress:
+        return 'In Progress';
+      case DiscussionStatus.Completed:
+        return 'Completed';
+      default:
+        return 'Not Started';
+    }
+  };
+
+  const getDiscussionStatusColor = (status: DiscussionStatus): string => {
+    switch (status) {
+      case DiscussionStatus.NotStarted:
+        return 'bg-gray-500';
+      case DiscussionStatus.InProgress:
+        return 'bg-blue-500';
+      case DiscussionStatus.Completed:
+        return 'bg-green-500';
+      default:
+        return 'bg-gray-500';
+    }
+  };
+
+  const getNextStatus = (currentStatus: number): number => {
+    switch (currentStatus) {
+      case 0:
+        return 1;
+      case 1:
+        return 2;
+      case 2:
+        return 0;
+      default:
+        return 0;
+    }
+  };
+
   const fetchUsers = async () => {
     try {
       setLoading(true);
@@ -189,7 +241,7 @@ const ChatApplication: React.FC = () => {
       setLoading(false);
     }
   };
-  
+
   const fetchClients = async () => {
       try {
         setLoading(true);
@@ -210,14 +262,14 @@ const ChatApplication: React.FC = () => {
   
   const fetchProjects = async () => {
         try {
-          const response = await fetch('https://api-crm-tegd.onrender.com/api/Project');
+          const response = await fetch(`${baseUrl}/api/Project`);
           const data = await response.json();
           setProjects(data);
         } catch (error) {
           console.error('Projects fetch error:', error);
         }
   };
-    
+
   useEffect(() => {
     fetchProjects();
   }, []);
@@ -241,7 +293,7 @@ const ChatApplication: React.FC = () => {
           url = `${baseUrl}/api/Chat/discussions/${currentUserId}/${selectedUserId}`;
         }
       }
-     
+
       const response = await fetch(url);
       if (response.ok) {
         const data = await response.json();
@@ -249,9 +301,9 @@ const ChatApplication: React.FC = () => {
         const uniqueDiscussions = data.filter((discussion : Discussion, index : number, self : Discussion[]) => 
           index === self.findIndex((d : Discussion) => d.id === discussion.id)
         );
-        
+
         let filteredDiscussions = uniqueDiscussions;
-        
+
         if (selectedUserId !== undefined && !isAdmin) {
           filteredDiscussions = uniqueDiscussions.filter((discussion : Discussion) => {
             const participants = new Set([
@@ -263,7 +315,7 @@ const ChatApplication: React.FC = () => {
             return participants.has(currentUserId) && participants.has(selectedUserId);
           });
         }
-        
+
         setDiscussions(filteredDiscussions);
       } else {
         throw new Error('Failed to fetch discussions');
@@ -289,16 +341,17 @@ const ChatApplication: React.FC = () => {
 
   const createDiscussion = async () => {
     if (!selectedUser || !newDiscussionTitle.trim() || isCreatingDiscussion) return;
-  
+
     setIsCreatingDiscussion(true);
-  
+
     const request: CreateDiscussionRequest = {
       title: newDiscussionTitle,
       description: newDiscussionDescription,
       createdByUserId: currentUser?.userId || 0,
       participantUserIds: [currentUser?.userId || 0, selectedUser.userId],
       senderId: currentUser?.userId || 0,
-      receiverId: selectedUser.userId
+      receiverId: selectedUser.userId,
+      status: newDiscussionStatus
     };
   
     try {
@@ -326,8 +379,78 @@ const ChatApplication: React.FC = () => {
       setIsCreatingDiscussion(false);
     }
   };
+
+  const handleStatusUpdate = async (discussionId: number, currentStatus: number, e: React.MouseEvent) => {
+    e.stopPropagation();
   
+    if (updatingDiscussions.has(discussionId)) {
+      return;
+    }
   
+    const nextStatus = getNextStatus(currentStatus);
+    
+    setUpdatingDiscussions(prev => new Set([...prev, discussionId]));
+  
+    const request: UpdateDiscussionStatusRequest = {
+      status: nextStatus,
+      updatedByUserId: currentUser?.userId || 0
+    };
+  
+    try {
+      const response = await fetch(`${baseUrl}/api/Chat/discussions/${discussionId}/status`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(request)
+      });
+  
+      if (response.ok) {
+        setDiscussions(prev => 
+          prev.map(discussion => 
+            discussion.id === discussionId 
+              ? { ...discussion, status: nextStatus }
+              : discussion
+          )
+        );
+  
+        if (selectedDiscussion?.id === discussionId) {
+          setSelectedDiscussion(prev => 
+            prev ? { ...prev, status: nextStatus } : prev
+          );
+        }
+  
+        console.log(`Discussion ${discussionId} status updated to ${nextStatus}`);
+      } else {
+        console.error('Failed to update discussion status');
+      }
+    } catch (error) {
+      console.error('Error updating discussion status:', error);
+    } finally {
+      setUpdatingDiscussions(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(discussionId);
+        return newSet;
+      });
+    }
+  };
+  
+  const filteredClients = clients.filter(client =>
+    `${client.first_name} ${client.last_name}`.toLowerCase().includes(clientSearchTerm.toLowerCase()) ||
+    (client.email && client.email.toLowerCase().includes(clientSearchTerm.toLowerCase()))
+  );
+
+  const filteredProjects = projects.filter(project =>
+    project.title.toLowerCase().includes(projectSearchTerm.toLowerCase()) ||
+    (project.details && project.details.toLowerCase().includes(projectSearchTerm.toLowerCase()))
+  );
+  
+  const handleCloseUsersDrawer = () => {
+    setShowUsersDrawer(false);
+    setSelectedDiscussionId(null);
+    setSearchTerm('');
+  };
+
   const handleFileChange = (e : React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -1362,35 +1485,78 @@ const ChatApplication: React.FC = () => {
         {discussions.length === 0 ? (
           <div className="p-4 text-center text-gray-500">
             <div className="text-sm">
-              {isAdmin 
-                ? 'No discussions found for this user' 
+              {isAdmin
+                ? 'No discussions found for this user'
                 : 'No conversations yet. Start a new discussion!'
               }
             </div>
           </div>
         ) : (
-          discussions.map((discussion) => (
+          discussions.map((discussion) => {
+            const isSelected = selectedDiscussion?.id === discussion.id;
+            const handleOpenUsersDrawer = () => {
+              setSelectedDiscussionId(discussion.id);
+              setShowUsersDrawer(true);
+            };
+
+            const handleCloseUsersDrawer = () => {
+              setShowUsersDrawer(false);
+              setSelectedDiscussionId(null);
+              setSearchTerm(''); // Optional: Reset search
+            };
+
+            const handleUserToggle = (userId : number) => {
+              setSelectedUsers(prev => {
+                const newSet = new Set(prev);
+                if (newSet.has(userId)) {
+                  newSet.delete(userId);
+                } else {
+                  newSet.add(userId);
+                }
+                return newSet;
+              });
+            };
+            return (
             <div
               key={discussion.id}
               onClick={() => handleDiscussionSelect(discussion)}
-              className={`flex items-center justify-between w-full p-4 rounded-xl mb-2 cursor-pointer transition-all ${
-                getStatusBackgroundColor(discussion.lastTaskStatus, selectedDiscussion?.id === discussion.id)
+              className={`w-full p-3 sm:p-4 rounded-xl mb-2 cursor-pointer transition-all sm:flex sm:items-center sm:justify-between ${
+                getStatusBackgroundColor(discussion.lastTaskStatus, isSelected)
               }`}
             >
-              <div className="flex-1">
-                <div className="font-medium text-gray-900 mb-1">{discussion.title}</div>
+              <div className="flex-1 mb-3 sm:mb-0">
+                <div className="font-medium text-gray-900 mb-1 text-sm sm:text-base">{discussion.title}</div>
                 <div className="text-sm text-gray-500 mb-2 line-clamp-2">{discussion.description}</div>
                 
                 <div className="text-xs text-gray-600 mb-1">
-                  <span className="font-medium">From:</span> {discussion.senderName} 
+                  <span className="font-medium">From:</span> {discussion.senderName}
                   <span className="mx-1">→</span>
                   <span className="font-medium">To:</span> {discussion.receiverName}
                 </div>
                 
-                <div className="text-xs text-gray-400">{new Date(discussion.createdAt).toLocaleString()}</div>
+                <div className="text-xs text-gray-400 mb-2 sm:mb-1">{new Date(discussion.createdAt).toLocaleString()}</div>
                 
-                {discussion.lastTaskStatus !== undefined && discussion.lastTaskStatus !== null && (
-                  <div className="text-xs mt-1">
+                <div className="flex flex-wrap items-center gap-2 mb-1">
+                  <span 
+                    onClick={(e) => handleStatusUpdate(discussion.id, discussion.status || DiscussionStatus.NotStarted, e)}
+                    className={`px-2 py-1 rounded-full text-white text-xs cursor-pointer transition-all hover:opacity-80 hover:scale-105 ${
+                      updatingDiscussions.has(discussion.id) 
+                        ? 'opacity-50 cursor-wait' 
+                        : getDiscussionStatusColor(discussion.status || DiscussionStatus.NotStarted)
+                    }`}
+                    title={`Click to change status (Current: ${getDiscussionStatusText(discussion.status || DiscussionStatus.NotStarted)})`}
+                  >
+                    {updatingDiscussions.has(discussion.id) ? (
+                      <div className="flex items-center gap-1">
+                        <div className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin"></div>
+                        <span>Updating...</span>
+                      </div>
+                    ) : (
+                      getDiscussionStatusText(discussion.status || DiscussionStatus.NotStarted)
+                    )}
+                  </span>
+                  
+                  {discussion.lastTaskStatus !== undefined && discussion.lastTaskStatus !== null && (
                     <span className={`px-2 py-1 rounded-full text-white text-xs ${
                       discussion.lastTaskStatus === TaskStatusBg.Backlog ? 'bg-gray-500' :
                       discussion.lastTaskStatus === TaskStatusBg.ToDo ? 'bg-yellow-500' :
@@ -1398,19 +1564,19 @@ const ChatApplication: React.FC = () => {
                       discussion.lastTaskStatus === TaskStatusBg.InReview ? 'bg-violet-500' :
                       discussion.lastTaskStatus === TaskStatusBg.Done ? 'bg-green-500' : 'bg-gray-500'
                     }`}>
-                      {getTaskStatusText(discussion.lastTaskStatus)}
+                      Task: {getTaskStatusText(discussion.lastTaskStatus)}
                     </span>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
-              
-              <div className="flex items-center gap-2 ml-4">
+            
+              <div className="flex flex-wrap items-center justify-start sm:justify-end gap-2 sm:gap-2 sm:ml-4 w-full sm:w-auto">
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
                     navigate(`/reports/${discussion.id}`);
                   }}
-                  className="p-2 rounded-lg bg-blue-500 hover:bg-blue-600 text-white transition-colors duration-200 flex items-center justify-center"
+                  className="p-2 rounded-lg bg-blue-500 hover:bg-blue-600 text-white transition-colors duration-200 flex items-center justify-center flex-1 sm:flex-none min-w-[44px]"
                   title="View Tasks Report"
                 >
                   <ListChecksIcon size={16} />
@@ -1420,14 +1586,82 @@ const ChatApplication: React.FC = () => {
                     e.stopPropagation();
                     handleDownloadExcel(discussion.id, discussion.title);
                   }}
-                  className="p-2 rounded-lg bg-green-500 hover:bg-green-600 text-white transition-colors duration-200 flex items-center justify-center"
+                  className="p-2 rounded-lg bg-green-500 hover:bg-green-600 text-white transition-colors duration-200 flex items-center justify-center flex-1 sm:flex-none min-w-[44px]"
                   title="Download Tasks Excel"
                 >
                   <DownloadIcon size={16} />
                 </button>
+                {/* <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleOpenUsersDrawer();
+                  }}
+                  className="p-2 rounded-lg bg-purple-500 hover:bg-purple-600 text-white transition-colors duration-200 flex items-center justify-center flex-1 sm:flex-none min-w-[44px]"
+                  title="Manage Users"
+                >
+                  <UsersIcon size={16} />
+                </button> */}
               </div>
+
+              {showUsersDrawer && selectedDiscussionId === discussion.id && (
+                <>
+                  <div 
+                    className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:bg-opacity-0 lg:invisible transition-opacity duration-300"
+                    onClick={handleCloseUsersDrawer}
+                  />
+                  
+                  <div className={`fixed top-0 right-0 h-full w-full lg:w-96 bg-white shadow-xl z-50 transform transition-transform duration-300 ease-in-out ${
+                    showUsersDrawer ? 'translate-x-0' : 'translate-x-full'
+                  }`}>
+                    <div className="flex items-center justify-between p-4 border-b bg-gray-50">
+                      <h3 className="text-lg font-semibold">Manage Users for {discussion.title}</h3>
+                      <button onClick={handleCloseUsersDrawer} className="p-1 hover:bg-gray-200 rounded-full">
+                        <X size={20} />
+                      </button>
+                    </div>
+                    
+                    <div className="p-4 border-b">
+                      <input
+                        type="text"
+                        placeholder="Search users..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      />
+                    </div>
+                    
+                    <div className="p-4 flex-1 overflow-y-auto max-h-[calc(100vh-200px)]">
+                      {filteredUsers.map((user) => (
+                        <label key={user.userId} className="flex items-center p-2 hover:bg-gray-50 rounded cursor-pointer mb-1">
+                          <input
+                            type="checkbox"
+                            checked={selectedUsers.has(user.userId)}
+                            onChange={() => handleUserToggle(user.userId)}
+                            className="mr-3 h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded"
+                          />
+                          <span className="text-sm">{user.kullaniciAdi}</span>
+                        </label>
+                      ))}
+                      {filteredUsers.length === 0 && (
+                        <p className="text-gray-500 text-sm text-center py-8">No users found.</p>
+                      )}
+                    </div>
+                    
+                    <div className="p-4 border-t bg-gray-50 flex justify-end gap-2">
+                      <button
+                        onClick={handleCloseUsersDrawer}
+                        className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors"
+                      >
+                        Close
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
-          ))
+            );
+      
+          })
         )}
       </div>
     </div>
@@ -1731,55 +1965,74 @@ const ChatApplication: React.FC = () => {
         </div>
       )}
 
-      {showCreateDiscussion && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl">
-            <h3 className="text-xl font-bold mb-6 text-slate-800">New Discussion</h3>
-            <div className="space-y-4">
-              <input
-                type="text"
-                value={newDiscussionTitle}
-                onChange={(e) => setNewDiscussionTitle(e.target.value)}
+    {showCreateDiscussion && (
+      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl">
+          <h3 className="text-xl font-bold mb-6 text-slate-800">New Discussion</h3>
+          <div className="space-y-4">
+            <input
+              type="text"
+              value={newDiscussionTitle}
+              onChange={(e) => setNewDiscussionTitle(e.target.value)}
+              className="w-full p-4 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+              placeholder="Discussion title"
+            />
+            <textarea
+              value={newDiscussionDescription}
+              onChange={(e) => setNewDiscussionDescription(e.target.value)}
+              className="w-full p-4 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+              rows={3}
+              placeholder="Description (optional)"
+            />
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Discussion Status
+              </label>
+              <select
+                value={newDiscussionStatus}
+                onChange={(e) => setNewDiscussionStatus(Number(e.target.value) as DiscussionStatus)}
                 className="w-full p-4 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-                placeholder="Discussion title"
-              />
-              <textarea
-                value={newDiscussionDescription}
-                onChange={(e) => setNewDiscussionDescription(e.target.value)}
-                className="w-full p-4 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-                rows={3}
-                placeholder="Description (optional)"
-              />
-            </div>
-            <div className="flex space-x-3 mt-6">
-            <button 
-                onClick={createDiscussion}
-                disabled={!newDiscussionTitle.trim() || isCreatingDiscussion}
-                className={`px-4 py-2 rounded-lg text-white font-medium transition-colors ${
-                  isCreatingDiscussion || !newDiscussionTitle.trim()
-                    ? 'bg-gray-400 cursor-not-allowed' 
-                    : 'bg-blue-500 hover:bg-blue-600'
-                }`}
               >
-                {isCreatingDiscussion ? (
-                  <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                    Creating...
-                  </div>
-                ) : (
-                  'Create Discussion'
-                )}
-              </button>
-              <button
-                onClick={() => setShowCreateDiscussion(false)}
-                className="flex-1 bg-slate-100 text-slate-700 py-3 rounded-xl hover:bg-slate-200 transition font-medium"
-              >
-                Cancel
-              </button>
+                <option value={DiscussionStatus.NotStarted}>Not Started</option>
+                <option value={DiscussionStatus.InProgress}>In Progress</option>
+                <option value={DiscussionStatus.Completed}>Completed</option>
+              </select>
             </div>
           </div>
+          
+          <div className="flex space-x-3 mt-6">
+            <button
+              onClick={createDiscussion}
+              disabled={!newDiscussionTitle.trim() || isCreatingDiscussion}
+              className={`px-4 py-2 rounded-lg text-white font-medium transition-colors ${
+                isCreatingDiscussion || !newDiscussionTitle.trim()
+                  ? 'bg-gray-400 cursor-not-allowed'
+                  : 'bg-blue-500 hover:bg-blue-600'
+              }`}
+            >
+              {isCreatingDiscussion ? (
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  Creating...
+                </div>
+              ) : (
+                'Create Discussion'
+              )}
+            </button>
+            <button
+              onClick={() => {
+                setShowCreateDiscussion(false);
+                setNewDiscussionStatus(DiscussionStatus.NotStarted);
+              }}
+              className="flex-1 bg-slate-100 text-slate-700 py-3 rounded-xl hover:bg-slate-200 transition font-medium"
+            >
+              Cancel
+            </button>
+          </div>
         </div>
-      )}
+      </div>
+    )}
 
     {drawerOpen && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
@@ -1831,27 +2084,27 @@ const ChatApplication: React.FC = () => {
 
               <div className="bg-slate-50 rounded-lg p-4 space-y-3">
                 <div className="space-y-2">
-                  <div className="text-sm font-medium text-slate-700">Assigned to:</div>
+                  <div className="text-sm font-medium text-slate-700">Clients:</div>
                   
                   <div className="relative">
                     <div
-                      onClick={() => setIsUserDropdownOpen(!isUserDropdownOpen)}
+                      onClick={() => setIsClientDropdownOpen(!isClientDropdownOpen)}
                       className="min-h-[42px] w-full border border-slate-300 rounded-lg px-3 py-2 bg-white cursor-pointer hover:border-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all duration-200 flex items-center justify-between"
                     >
                       <div className="flex-1 flex flex-wrap gap-2">
-                        {selectedUsers.length === 0 ? (
-                          <span className="text-slate-500 text-sm">Select assignees...</span>
+                        {selectedClients.length === 0 ? (
+                          <span className="text-slate-500 text-sm">Select clients...</span>
                         ) : (
-                          selectedUsers.map(user => (
+                          selectedClients.map(client => (
                             <span
-                              key={user.userId}
+                              key={client.id}
                               className="inline-flex items-center gap-1 bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full"
                             >
-                              {user.kullaniciAdi}
+                              {client.first_name} {client.last_name}
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  setSelectedUsers(prev => prev.filter(u => u.userId !== user.userId));
+                                  setSelectedClients(prev => prev.filter(c => c.id !== client.id));
                                 }}
                                 className="hover:bg-blue-200 rounded-full p-0.5 transition-colors"
                               >
@@ -1865,7 +2118,7 @@ const ChatApplication: React.FC = () => {
                       </div>
                       <svg
                         className={`w-5 h-5 text-slate-400 transition-transform duration-200 ${
-                          isUserDropdownOpen ? 'rotate-180' : ''
+                          isClientDropdownOpen ? 'rotate-180' : ''
                         }`}
                         fill="none"
                         stroke="currentColor"
@@ -1874,30 +2127,30 @@ const ChatApplication: React.FC = () => {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                       </svg>
                     </div>
-
-                    {isUserDropdownOpen && (
+                    
+                    {isClientDropdownOpen && (
                       <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-300 rounded-lg shadow-lg z-50 max-h-60 overflow-hidden">
                         <div className="p-3">
                           <div className="relative mb-3">
                             <input
                               type="text"
-                              placeholder="Search users..."
-                              value={searchTerm}
-                              onChange={(e) => setSearchTerm(e.target.value)}
+                              placeholder="Search clients..."
+                              value={clientSearchTerm}
+                              onChange={(e) => setClientSearchTerm(e.target.value)}
                               className="w-full pl-9 pr-4 py-2 text-sm border border-slate-300 rounded-md focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all"
                               autoFocus
                             />
-                            <svg 
+                            <svg
                               className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400"
-                              fill="none" 
-                              stroke="currentColor" 
+                              fill="none"
+                              stroke="currentColor"
                               viewBox="0 0 24 24"
                             >
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                             </svg>
-                            {searchTerm && (
+                            {clientSearchTerm && (
                               <button
-                                onClick={() => setSearchTerm('')}
+                                onClick={() => setClientSearchTerm('')}
                                 className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-600"
                               >
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1906,17 +2159,17 @@ const ChatApplication: React.FC = () => {
                               </button>
                             )}
                           </div>
-
+                          
                           <div className="flex items-center justify-between mb-2 pb-2 border-b border-slate-200">
-                            <span className="text-sm font-medium text-slate-700">Select Users</span>
+                            <span className="text-sm font-medium text-slate-700">Select Clients</span>
                             <div className="flex gap-2">
-                              {filteredUsers.length > 0 && (
+                              {filteredClients.length > 0 && (
                                 <button
                                   onClick={() => {
-                                    const newUsers = filteredUsers.filter(user => 
-                                      !selectedUsers.some(selected => selected.userId === user.userId)
+                                    const newClients = filteredClients.filter(client =>
+                                      !selectedClients.some(selected => selected.id === client.id)
                                     );
-                                    setSelectedUsers(prev => [...prev, ...newUsers]);
+                                    setSelectedClients(prev => [...prev, ...newClients]);
                                   }}
                                   className="text-xs text-blue-600 hover:text-blue-800 px-2 py-1 hover:bg-blue-50 rounded font-medium"
                                 >
@@ -1924,7 +2177,7 @@ const ChatApplication: React.FC = () => {
                                 </button>
                               )}
                               <button
-                                onClick={() => setSelectedUsers([])}
+                                onClick={() => setSelectedClients([])}
                                 className="text-xs text-slate-500 hover:text-slate-700 px-2 py-1 hover:bg-slate-100 rounded"
                               >
                                 Clear All
@@ -1932,29 +2185,29 @@ const ChatApplication: React.FC = () => {
                             </div>
                           </div>
                         </div>
-                          
+                        
                         <div className="max-h-40 overflow-y-auto px-3 pb-3">
-                          {filteredUsers.map(user => {
-                            const isSelected = selectedUsers.some(u => u.userId === user.userId);
+                          {filteredClients.map(client => {
+                            const isSelected = selectedClients.some(c => c.id === client.id);
                             return (
                               <div
-                                key={user.userId}
+                                key={client.id}
                                 onClick={() => {
                                   if (isSelected) {
-                                    setSelectedUsers(prev => prev.filter(u => u.userId !== user.userId));
+                                    setSelectedClients(prev => prev.filter(c => c.id !== client.id));
                                   } else {
-                                    setSelectedUsers(prev => [...prev, user]);
+                                    setSelectedClients(prev => [...prev, client]);
                                   }
                                 }}
                                 className={`flex items-center gap-3 p-2 rounded-md cursor-pointer transition-colors ${
-                                  isSelected 
-                                    ? 'bg-blue-50 text-blue-900' 
+                                  isSelected
+                                    ? 'bg-blue-50 text-blue-900'
                                     : 'hover:bg-slate-50 text-slate-700'
                                 }`}
                               >
                                 <div className={`w-4 h-4 border-2 rounded flex items-center justify-center ${
-                                  isSelected 
-                                    ? 'bg-blue-500 border-blue-500' 
+                                  isSelected
+                                    ? 'bg-blue-500 border-blue-500'
                                     : 'border-slate-300'
                                 }`}>
                                   {isSelected && (
@@ -1964,13 +2217,13 @@ const ChatApplication: React.FC = () => {
                                   )}
                                 </div>
                                 <div className="flex items-center gap-2 flex-1">
-                                  <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white text-sm font-medium">
-                                    {user.kullaniciAdi.charAt(0).toUpperCase()}
+                                  <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-teal-600 rounded-full flex items-center justify-center text-white text-sm font-medium">
+                                    {client.first_name.charAt(0).toUpperCase()}{client.last_name.charAt(0).toUpperCase()}
                                   </div>
                                   <div className="flex-1 min-w-0">
-                                    <div className="text-sm font-medium truncate">{user.kullaniciAdi}</div>
-                                    {user.email && (
-                                      <div className="text-xs text-slate-500 truncate">{user.email}</div>
+                                    <div className="text-sm font-medium truncate">{client.first_name} {client.last_name}</div>
+                                    {client.email && (
+                                      <div className="text-xs text-slate-500 truncate">{client.email}</div>
                                     )}
                                   </div>
                                 </div>
@@ -1978,33 +2231,33 @@ const ChatApplication: React.FC = () => {
                             );
                           })}
                           
-                          {filteredUsers.length === 0 && searchTerm && (
+                          {filteredClients.length === 0 && clientSearchTerm && (
                             <div className="text-center text-slate-500 text-sm py-4">
                               <svg className="w-8 h-8 mx-auto mb-2 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                               </svg>
-                              No users found for "{searchTerm}"
+                              No clients found for "{clientSearchTerm}"
                             </div>
                           )}
                           
-                          {users.length === 0 && (
+                          {clients.length === 0 && (
                             <div className="text-center text-slate-500 text-sm py-4">
                               <svg className="w-8 h-8 mx-auto mb-2 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 6.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                               </svg>
-                              No users available
+                              No clients available
                             </div>
                           )}
                         </div>
                       </div>
                     )}
                   </div>
-
-                  {selectedUsers.length > 0 && (
+                  
+                  {selectedClients.length > 0 && (
                     <div className="flex items-center justify-between text-xs text-slate-600 bg-white px-3 py-2 rounded border">
-                      <span>{selectedUsers.length} user{selectedUsers.length !== 1 ? 's' : ''} selected</span>
+                      <span>{selectedClients.length} client{selectedClients.length !== 1 ? 's' : ''} selected</span>
                       <button
-                        onClick={() => setSelectedUsers([])}
+                        onClick={() => setSelectedClients([])}
                         className="text-blue-600 hover:text-blue-800 font-medium"
                       >
                         Clear
@@ -2012,76 +2265,189 @@ const ChatApplication: React.FC = () => {
                     </div>
                   )}
                 </div>
-
-              <div>
-                <div className="text-sm text-slate-600 mb-2">Clients:</div>
+      
                 <div className="space-y-2">
-                  {selectedClients.map(client => (
-                    <div key={client.id} className="flex items-center justify-between bg-white px-2 py-1 rounded border">
-                      <span className="text-sm">{client.first_name}</span>
-                      <button
-                        onClick={() => setSelectedClients(prev => prev.filter(c => c.id !== client.id))}
-                        className="text-red-500 hover:text-red-700"
+                  <div className="text-sm font-medium text-slate-700">Projects:</div>
+                  
+                  <div className="relative">
+                    <div
+                      onClick={() => setIsProjectDropdownOpen(!isProjectDropdownOpen)}
+                      className="min-h-[42px] w-full border border-slate-300 rounded-lg px-3 py-2 bg-white cursor-pointer hover:border-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all duration-200 flex items-center justify-between"
+                    >
+                      <div className="flex-1 flex flex-wrap gap-2">
+                        {selectedProjects.length === 0 ? (
+                          <span className="text-slate-500 text-sm">Select projects...</span>
+                        ) : (
+                          selectedProjects.map(project => (
+                            <span
+                              key={project.id}
+                              className="inline-flex items-center gap-1 bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full"
+                            >
+                              {project.title}
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedProjects(prev => prev.filter(p => p.id !== project.id));
+                                }}
+                                className="hover:bg-blue-200 rounded-full p-0.5 transition-colors"
+                              >
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                              </button>
+                            </span>
+                          ))
+                        )}
+                      </div>
+                      <svg
+                        className={`w-5 h-5 text-slate-400 transition-transform duration-200 ${
+                          isProjectDropdownOpen ? 'rotate-180' : ''
+                        }`}
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
                       >
-                        <X size={14} />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </div>
+                    
+                    {isProjectDropdownOpen && (
+                      <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-300 rounded-lg shadow-lg z-50 max-h-60 overflow-hidden">
+                        <div className="p-3">
+                          <div className="relative mb-3">
+                            <input
+                              type="text"
+                              placeholder="Search projects..."
+                              value={projectSearchTerm}
+                              onChange={(e) => setProjectSearchTerm(e.target.value)}
+                              className="w-full pl-9 pr-4 py-2 text-sm border border-slate-300 rounded-md focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all"
+                              autoFocus
+                            />
+                            <svg
+                              className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                            </svg>
+                            {projectSearchTerm && (
+                              <button
+                                onClick={() => setProjectSearchTerm('')}
+                                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                              </button>
+                            )}
+                          </div>
+                          
+                          <div className="flex items-center justify-between mb-2 pb-2 border-b border-slate-200">
+                            <span className="text-sm font-medium text-slate-700">Select Projects</span>
+                            <div className="flex gap-2">
+                              {filteredProjects.length > 0 && (
+                                <button
+                                  onClick={() => {
+                                    const newProjects = filteredProjects.filter(project =>
+                                      !selectedProjects.some(selected => selected.id === project.id)
+                                    );
+                                    setSelectedProjects(prev => [...prev, ...newProjects]);
+                                  }}
+                                  className="text-xs text-blue-600 hover:text-blue-800 px-2 py-1 hover:bg-blue-50 rounded font-medium"
+                                >
+                                  Select All
+                                </button>
+                              )}
+                              <button
+                                onClick={() => setSelectedProjects([])}
+                                className="text-xs text-slate-500 hover:text-slate-700 px-2 py-1 hover:bg-slate-100 rounded"
+                              >
+                                Clear All
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                        
+                        <div className="max-h-40 overflow-y-auto px-3 pb-3">
+                          {filteredProjects.map(project => {
+                            const isSelected = selectedProjects.some(p => p.id === project.id);
+                            return (
+                              <div
+                                key={project.id}
+                                onClick={() => {
+                                  if (isSelected) {
+                                    setSelectedProjects(prev => prev.filter(p => p.id !== project.id));
+                                  } else {
+                                    setSelectedProjects(prev => [...prev, project]);
+                                  }
+                                }}
+                                className={`flex items-center gap-3 p-2 rounded-md cursor-pointer transition-colors ${
+                                  isSelected
+                                    ? 'bg-blue-50 text-blue-900'
+                                    : 'hover:bg-slate-50 text-slate-700'
+                                }`}
+                              >
+                                <div className={`w-4 h-4 border-2 rounded flex items-center justify-center ${
+                                  isSelected
+                                    ? 'bg-blue-500 border-blue-500'
+                                    : 'border-slate-300'
+                                }`}>
+                                  {isSelected && (
+                                    <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                    </svg>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-2 flex-1">
+                                  <div className="w-8 h-8 bg-gradient-to-br from-orange-500 to-red-600 rounded-full flex items-center justify-center text-white text-sm font-medium">
+                                    {project.title.charAt(0).toUpperCase()}
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="text-sm font-medium truncate">{project.title}</div>
+                                    {project.details && (
+                                      <div className="text-xs text-slate-500 truncate">{project.details}</div>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                          
+                          {filteredProjects.length === 0 && projectSearchTerm && (
+                            <div className="text-center text-slate-500 text-sm py-4">
+                              <svg className="w-8 h-8 mx-auto mb-2 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                              </svg>
+                              No projects found for "{projectSearchTerm}"
+                            </div>
+                          )}
+                          
+                          {projects.length === 0 && (
+                            <div className="text-center text-slate-500 text-sm py-4">
+                              <svg className="w-8 h-8 mx-auto mb-2 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                              </svg>
+                              No projects available
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  
+                  {selectedProjects.length > 0 && (
+                    <div className="flex items-center justify-between text-xs text-slate-600 bg-white px-3 py-2 rounded border">
+                      <span>{selectedProjects.length} project{selectedProjects.length !== 1 ? 's' : ''} selected</span>
+                      <button
+                        onClick={() => setSelectedProjects([])}
+                        className="text-blue-600 hover:text-blue-800 font-medium"
+                      >
+                        Clear
                       </button>
                     </div>
-                  ))}
-                  <select
-                    value=""
-                    onChange={(e) => {
-                      const clientId = parseInt(e.target.value);
-                      const client = clients.find(c => c.id === clientId);
-                      if (client && !selectedClients.find(c => c.id === clientId)) {
-                        setSelectedClients(prev => [...prev, client]);
-                      }
-                    }}
-                    className="w-full text-sm border border-slate-300 rounded px-2 py-1 bg-white"
-                  >
-                    <option value="">Add client...</option>
-                    {clients.filter(client => !selectedClients.find(c => c.id === client.id)).map(client => (
-                      <option key={client.id} value={client.id}>
-                        {client.first_name}
-                      </option>
-                    ))}
-                  </select>
+                  )}
                 </div>
-              </div>
-              
-              <div>
-                <div className="text-sm text-slate-600 mb-2">Projects:</div>
-                <div className="space-y-2">
-                  {selectedProjects.map(project => (
-                    <div key={project.id} className="flex items-center justify-between bg-white px-2 py-1 rounded border">
-                      <span className="text-sm">{project.title}</span>
-                      <button
-                        onClick={() => setSelectedProjects(prev => prev.filter(p => p.id !== project.id))}
-                        className="text-red-500 hover:text-red-700"
-                      >
-                        <X size={14} />
-                      </button>
-                    </div>
-                  ))}
-                  <select
-                    value=""
-                    onChange={(e) => {
-                      const projectId = parseInt(e.target.value);
-                      const project = projects.find(p => p.id === projectId);
-                      if (project && !selectedProjects.find(p => p.id === projectId)) {
-                        setSelectedProjects(prev => [...prev, project]);
-                      }
-                    }}
-                    className="w-full text-sm border border-slate-300 rounded px-2 py-1 bg-white"
-                  >
-                    <option value="">Add project...</option>
-                    {projects.filter(project => !selectedProjects.find(p => p.id === project.id)).map(project => (
-                      <option key={project.id} value={project.id}>
-                        {project.title}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
             </div>
 
               {drawerType === MessageType.Text && (
