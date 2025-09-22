@@ -48,6 +48,28 @@ interface DiscussionWithLastTask extends Discussion {
   status?: DiscussionStatus;
 }
 
+interface AssignedUser {
+  assignedUserId: number;
+  assignedUserName: string;
+  assignedByUserId: number;
+  assignedByUserName: string;
+  assignedAt: string;
+}
+
+interface AssignDiscussionRequest {
+  discussionId: number;
+  userIds: number[];
+  assignedByUserId: number;
+}
+
+interface AssignmentResponse {
+  message: string;
+  assignedUsers: number[];
+  alreadyAssigned: number[];
+  totalAssigned: number;
+  totalSkipped: number;
+}
+
 enum TaskStatusBg {
   Backlog = 0,
   ToDo = 1,
@@ -107,11 +129,16 @@ const ChatApplication: React.FC = () => {
   const [projectSearchTerm, setProjectSearchTerm] = useState('');
   const [newDiscussionStatus, setNewDiscussionStatus] = useState<DiscussionStatus>(DiscussionStatus.NotStarted);
   const [updatingDiscussions, setUpdatingDiscussions] = useState<Set<number>>(new Set());
+  const [isAssigning, setIsAssigning] = useState(false);
   const [showUsersDrawer, setShowUsersDrawer] = useState(false);
   const [selectedUsers, setSelectedUsers] = useState<Set<number>>(new Set());
   const [selectedDiscussionId, setSelectedDiscussionId] = useState<number | null>(null);
+  const [assignedUsers, setAssignedUsers] = useState<{ [discussionId: number]: AssignedUser[] }>({});
+  const [loadingAssignedUsers, setLoadingAssignedUsers] = useState<{ [discussionId: number]: boolean }>({});
+
   const [searchTerm, setSearchTerm] = useState('');
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const messagesContainerRef = useRef<HTMLDivElement | null>(null);
 
   const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const audioStreamRef = useRef<MediaStream | null>(null);
@@ -122,6 +149,16 @@ const ChatApplication: React.FC = () => {
   const navigate = useNavigate();
   const baseUrl = "https://api-crm-tegd.onrender.com";
   const isAdmin = currentUser?.role === "Yonetici";
+
+  const sortByCreatedAtAsc = (arr: Message[]) => {
+    const toTime = (m: any) => {
+      const base = m?.createdAt ?? m?.timestamp;
+      const t = base ? new Date(base).getTime() : undefined;
+      if (!isNaN(Number(t))) return Number(t);
+      return typeof m?.id === 'number' ? m.id : 0;
+    };
+    return arr.slice().sort((a, b) => toTime(a) - toTime(b));
+  };
 
   const getPriorityFromNumber = (priorityNum: number): TaskPriority => {
     const priorityMap = {
@@ -279,65 +316,82 @@ const ChatApplication: React.FC = () => {
     fetchClients();
   }, []);
 
-  const fetchDiscussions = useCallback(async (currentUserId: number, selectedUserId?: number) => {
-    if (!currentUserId) return;
-  
-    setLoading(true);
+  const fetchAssignedUsers = useCallback(async (discussionId: number) => {
+    if (loadingAssignedUsers[discussionId]) return;
+    
+    setLoadingAssignedUsers(prev => ({ ...prev, [discussionId]: true }));
+    
     try {
-      let url = `${baseUrl}/api/Chat/discussions/${currentUserId}`;
-     
-      if (selectedUserId !== undefined) {
-        if (isAdmin) {
-          url = `${baseUrl}/api/Chat/discussions/admin/${currentUserId}/${selectedUserId}`;
-        } else {
-          url = `${baseUrl}/api/Chat/discussions/${currentUserId}/${selectedUserId}`;
-        }
-      }
-
-      const response = await fetch(url);
+      const response = await fetch(`${baseUrl}/api/Chat/discussions/${discussionId}/assigned-users`);
       if (response.ok) {
-        const data = await response.json();
-        
-        const uniqueDiscussions = data.filter((discussion : Discussion, index : number, self : Discussion[]) => 
-          index === self.findIndex((d : Discussion) => d.id === discussion.id)
-        );
-
-        let filteredDiscussions = uniqueDiscussions;
-
-        if (selectedUserId !== undefined && !isAdmin) {
-          filteredDiscussions = uniqueDiscussions.filter((discussion : Discussion) => {
-            const participants = new Set([
-              discussion.createdByUserId,
-              discussion.senderId || discussion.createdByUserId,
-              discussion.receiverId
-            ].filter(id => id && id !== 0)); 
-            
-            return participants.has(currentUserId) && participants.has(selectedUserId);
-          });
-        }
-
-        setDiscussions(filteredDiscussions);
+        const data: AssignedUser[] = await response.json();
+        setAssignedUsers(prev => ({ ...prev, [discussionId]: data }));
+        return data;
       } else {
-        throw new Error('Failed to fetch discussions');
+        throw new Error('Failed to fetch assigned users');
       }
     } catch (error) {
-      console.error('Error fetching discussions:', error);
+      console.error('Error fetching assigned users:', error);
+      return [];
     } finally {
-      setLoading(false);
+      setLoadingAssignedUsers(prev => ({ ...prev, [discussionId]: false }));
     }
-  }, [isAdmin]);
+  }, [loadingAssignedUsers]);
+
+  const fetchDiscussions = useCallback(async (currentUserId: number, selectedUserId?: number) => {
+    if (!currentUserId) return;
+
+    setLoading(true);
+    try {
+        let url = `${baseUrl}/api/Chat/discussions/${currentUserId}`;
+
+        if (selectedUserId !== undefined) {
+            if (isAdmin) {
+                url = `${baseUrl}/api/Chat/discussions/admin/${currentUserId}/${selectedUserId}`;
+            } else {
+                url = `${baseUrl}/api/Chat/discussions/${currentUserId}/${selectedUserId}`;
+            }
+        }
+
+        const response = await fetch(url);
+        if (response.ok) {
+            const data: Discussion[] = await response.json();
+
+            const uniqueDiscussions = data.filter((discussion: Discussion, index: number, self: Discussion[]) =>
+                index === self.findIndex((d: Discussion) => d.id === discussion.id)
+            );
+
+            setDiscussions(uniqueDiscussions);
+
+            uniqueDiscussions.forEach((discussion: Discussion) => {
+                fetchAssignedUsers(discussion.id);
+            });
+        } else {
+            throw new Error('Failed to fetch discussions');
+        }
+      } catch (error) {
+          console.error('Error fetching discussions:', error);
+      } finally {
+          setLoading(false);
+      }
+  }, [isAdmin, fetchAssignedUsers]);
 
   const fetchMessages = useCallback(async (discussionId: number) => {
+    if (!currentUser) return;
+    
     try {
-      const response = await fetch(`${baseUrl}/api/Chat/discussions/${discussionId}/messages`);
+      const response = await fetch(`${baseUrl}/api/Chat/discussions/${discussionId}/messages?userId=${currentUser.userId}`);
       if (response.ok) {
         const data = await response.json();
-        setMessages(data);
+        const sorted = sortByCreatedAtAsc(data as Message[]);
+        setMessages(sorted as Message[]);
+      } else {
+        console.error('Failed to fetch messages');
       }
     } catch (error) {
       console.error('Error fetching messages:', error);
     }
-  }, []);
+  }, [currentUser]);
 
   const createDiscussion = async () => {
     if (!selectedUser || !newDiscussionTitle.trim() || isCreatingDiscussion) return;
@@ -434,6 +488,59 @@ const ChatApplication: React.FC = () => {
       });
     }
   };
+
+  const assignUsersToDiscussion = async (discussionId: number, userIds: number[]) => {
+    if (!currentUser || userIds.length === 0) return;
+  
+    setIsAssigning(true);
+    try {
+      const request: AssignDiscussionRequest = {
+        discussionId,
+        userIds,
+        assignedByUserId: currentUser.userId
+      };
+  
+      const response = await fetch(`${baseUrl}/api/Chat/discussions/assign`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(request)
+      });
+  
+      if (response.ok) {
+        const result: AssignmentResponse = await response.json();
+        
+        if (result.totalAssigned > 0) {
+          console.log(`Successfully assigned ${result.totalAssigned} users to the discussion`);
+        }
+        
+        if (result.totalSkipped > 0) {
+          console.log(`${result.totalSkipped} users were already assigned to this discussion`);
+        }
+  
+        setSelectedUsers(new Set());
+        handleCloseUsersDrawer();
+        
+        await fetchDiscussions(currentUser.userId, selectedUser?.userId);
+        
+      } else if (response.status === 403) {
+        console.error('You don\'t have permission to assign users to this discussion');
+      } else {
+        throw new Error('Failed to assign users to discussion');
+      }
+    } catch (error) {
+      console.error('Error assigning users to discussion:', error);
+    } finally {
+      setIsAssigning(false);
+    }
+  };
+
+  const handleAssignClick = () => {
+    if (selectedDiscussionId && selectedUsers.size > 0) {
+      assignUsersToDiscussion(selectedDiscussionId, Array.from(selectedUsers));
+    }
+  };
   
   const filteredClients = clients.filter(client =>
     `${client.first_name} ${client.last_name}`.toLowerCase().includes(clientSearchTerm.toLowerCase()) ||
@@ -516,7 +623,7 @@ const ChatApplication: React.FC = () => {
         const message = await response.json();
         console.log('File message saved successfully:', message);
        
-        setMessages(prev => [...prev, message]);
+        setMessages(prev => sortByCreatedAtAsc([...(prev as Message[]), message as Message]));
        
         if (fileInputRef.current) fileInputRef.current.value = '';
         setSelectedFile(null);
@@ -585,8 +692,8 @@ const ChatApplication: React.FC = () => {
 
       if (response.ok) {
         const updatedMessage = await response.json();
-        setMessages(prev => prev.map(msg => 
-          msg.id === messageId ? updatedMessage : msg
+        setMessages(prev => sortByCreatedAtAsc(
+          (prev as Message[]).map(msg => (msg.id === messageId ? (updatedMessage as Message) : msg))
         ));
         setEditingMessageId(null);
         setEditingContent('');
@@ -751,7 +858,7 @@ const ChatApplication: React.FC = () => {
             mimeType: result.mimeType
         };
        
-      setMessages(prev => [...prev, newVoiceMessage]);
+      setMessages(prev => sortByCreatedAtAsc([...(prev as Message[]), newVoiceMessage]));
       setAudioBlob(null);
       setRecordingTime(0);
         
@@ -840,7 +947,7 @@ const ChatApplication: React.FC = () => {
       setPlayingVoiceId(null);
     }
   };
-  
+
   const stopVoiceMessage = (message: Message) => {
     if (audioRef.current) {
       audioRef.current.pause();
@@ -1030,10 +1137,10 @@ const ChatApplication: React.FC = () => {
   
       if (response.ok) {
         const result: MessageResponse = await response.json();
-        setMessages(prev => [...prev, {
+        setMessages(prev => sortByCreatedAtAsc([...(prev as Message[]), {
           ...result,
           assignedUserIds: result.assignedUserIds || []
-        } as Message]);
+        } as Message]));
 
         if (selectedDiscussion) {
           setDiscussions(prev => prev.map(disc => 
@@ -1372,6 +1479,13 @@ const ChatApplication: React.FC = () => {
     setTaskStatus(TaskStatus.Backlog);
   };
 
+  useEffect(() => {
+    if (messagesContainerRef.current) {
+      const el = messagesContainerRef.current;
+      el.scrollTop = el.scrollHeight;
+    }
+  }, [messages, selectedDiscussion]);
+
   return (
     <div className="h-screen bg-gray-50 flex flex-col md:flex-row">
       <div className="md:hidden bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between">
@@ -1498,14 +1612,14 @@ const ChatApplication: React.FC = () => {
               setSelectedDiscussionId(discussion.id);
               setShowUsersDrawer(true);
             };
-
+          
             const handleCloseUsersDrawer = () => {
               setShowUsersDrawer(false);
               setSelectedDiscussionId(null);
-              setSearchTerm(''); // Optional: Reset search
+              setSearchTerm('');
             };
-
-            const handleUserToggle = (userId : number) => {
+          
+            const handleUserToggle = (userId: number) => {
               setSelectedUsers(prev => {
                 const newSet = new Set(prev);
                 if (newSet.has(userId)) {
@@ -1516,151 +1630,286 @@ const ChatApplication: React.FC = () => {
                 return newSet;
               });
             };
-            return (
-            <div
-              key={discussion.id}
-              onClick={() => handleDiscussionSelect(discussion)}
-              className={`w-full p-3 sm:p-4 rounded-xl mb-2 cursor-pointer transition-all sm:flex sm:items-center sm:justify-between ${
-                getStatusBackgroundColor(discussion.lastTaskStatus, isSelected)
-              }`}
-            >
-              <div className="flex-1 mb-3 sm:mb-0">
-                <div className="font-medium text-gray-900 mb-1 text-sm sm:text-base">{discussion.title}</div>
-                <div className="text-sm text-gray-500 mb-2 line-clamp-2">{discussion.description}</div>
-                
-                <div className="text-xs text-gray-600 mb-1">
-                  <span className="font-medium">From:</span> {discussion.senderName}
-                  <span className="mx-1">→</span>
-                  <span className="font-medium">To:</span> {discussion.receiverName}
-                </div>
-                
-                <div className="text-xs text-gray-400 mb-2 sm:mb-1">{new Date(discussion.createdAt).toLocaleString()}</div>
-                
-                <div className="flex flex-wrap items-center gap-2 mb-1">
-                  <span 
-                    onClick={(e) => handleStatusUpdate(discussion.id, discussion.status || DiscussionStatus.NotStarted, e)}
-                    className={`px-2 py-1 rounded-full text-white text-xs cursor-pointer transition-all hover:opacity-80 hover:scale-105 ${
-                      updatingDiscussions.has(discussion.id) 
-                        ? 'opacity-50 cursor-wait' 
-                        : getDiscussionStatusColor(discussion.status || DiscussionStatus.NotStarted)
-                    }`}
-                    title={`Click to change status (Current: ${getDiscussionStatusText(discussion.status || DiscussionStatus.NotStarted)})`}
-                  >
-                    {updatingDiscussions.has(discussion.id) ? (
-                      <div className="flex items-center gap-1">
-                        <div className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin"></div>
-                        <span>Updating...</span>
-                      </div>
-                    ) : (
-                      getDiscussionStatusText(discussion.status || DiscussionStatus.NotStarted)
-                    )}
-                  </span>
-                  
-                  {discussion.lastTaskStatus !== undefined && discussion.lastTaskStatus !== null && (
-                    <span className={`px-2 py-1 rounded-full text-white text-xs ${
-                      discussion.lastTaskStatus === TaskStatusBg.Backlog ? 'bg-gray-500' :
-                      discussion.lastTaskStatus === TaskStatusBg.ToDo ? 'bg-yellow-500' :
-                      discussion.lastTaskStatus === TaskStatusBg.InProgress ? 'bg-blue-500' :
-                      discussion.lastTaskStatus === TaskStatusBg.InReview ? 'bg-violet-500' :
-                      discussion.lastTaskStatus === TaskStatusBg.Done ? 'bg-green-500' : 'bg-gray-500'
-                    }`}>
-                      Task: {getTaskStatusText(discussion.lastTaskStatus)}
-                    </span>
-                  )}
-                </div>
-              </div>
-            
-              <div className="flex flex-wrap items-center justify-start sm:justify-end gap-2 sm:gap-2 sm:ml-4 w-full sm:w-auto">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    navigate(`/reports/${discussion.id}`);
-                  }}
-                  className="p-2 rounded-lg bg-blue-500 hover:bg-blue-600 text-white transition-colors duration-200 flex items-center justify-center flex-1 sm:flex-none min-w-[44px]"
-                  title="View Tasks Report"
-                >
-                  <ListChecksIcon size={16} />
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDownloadExcel(discussion.id, discussion.title);
-                  }}
-                  className="p-2 rounded-lg bg-green-500 hover:bg-green-600 text-white transition-colors duration-200 flex items-center justify-center flex-1 sm:flex-none min-w-[44px]"
-                  title="Download Tasks Excel"
-                >
-                  <DownloadIcon size={16} />
-                </button>
-                {/* <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleOpenUsersDrawer();
-                  }}
-                  className="p-2 rounded-lg bg-purple-500 hover:bg-purple-600 text-white transition-colors duration-200 flex items-center justify-center flex-1 sm:flex-none min-w-[44px]"
-                  title="Manage Users"
-                >
-                  <UsersIcon size={16} />
-                </button> */}
-              </div>
 
-              {showUsersDrawer && selectedDiscussionId === discussion.id && (
+            return (
+              <div
+                key={discussion.id}
+                onClick={() => handleDiscussionSelect(discussion)}
+                className={`group relative w-full bg-white rounded-2xl shadow-sm hover:shadow-lg border transition-all duration-300 cursor-pointer overflow-hidden mb-4 ${
+                  isSelected 
+                    ? 'ring-2 ring-blue-500 shadow-lg border-blue-200' 
+                    : 'border-gray-100 hover:border-gray-200'
+                }`}
+              >
+                <div 
+                  className={`absolute top-0 left-0 right-0 h-1 ${
+                    getStatusBackgroundColor(discussion.lastTaskStatus, false)
+                  }`}
+                />
+                
+                <div className="p-5 sm:p-6">
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-lg sm:text-xl font-semibold text-gray-900 mb-2 line-clamp-2 group-hover:text-blue-600 transition-colors">
+                        {discussion.title}
+                      </h3>
+                      <p className="text-sm sm:text-base text-gray-600 line-clamp-3 mb-3 leading-relaxed">
+                        {discussion.description}
+                      </p>
+                    </div>
+                    
+                    <div className="ml-3 sm:hidden">
+                      <div className="w-6 h-6 flex items-center justify-center">
+                        <div className="w-1 h-1 bg-gray-400 rounded-full"></div>
+                        <div className="w-1 h-1 bg-gray-400 rounded-full mx-1"></div>
+                        <div className="w-1 h-1 bg-gray-400 rounded-full"></div>
+                      </div>
+                    </div>
+                  </div>
+          
+                  <div className="bg-gray-50 rounded-xl p-3 mb-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-2 text-sm">
+                      <div className="flex items-center text-gray-700">
+                        <div className="w-2 h-2 bg-blue-500 rounded-full mr-2"></div>
+                        <span className="font-medium">From:</span>
+                        <span className="ml-1 text-gray-900">{discussion.senderName}</span>
+                      </div>
+                      <div className="hidden sm:block text-gray-400">→</div>
+                      <div className="flex items-center text-gray-700">
+                        <div className="w-2 h-2 bg-green-500 rounded-full mr-2"></div>
+                        <span className="font-medium">To:</span>
+                        <span className="ml-1 text-gray-900">{discussion.receiverName}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2 mb-4">
+                    <span 
+                      onClick={(e) => handleStatusUpdate(discussion.id, discussion.status || DiscussionStatus.NotStarted, e)}
+                      className={`inline-flex items-center px-3 py-1.5 rounded-full text-xs font-medium cursor-pointer transition-all hover:scale-105 active:scale-95 ${
+                        updatingDiscussions.has(discussion.id) 
+                          ? 'opacity-50 cursor-wait bg-gray-100 text-gray-600' 
+                          : `text-white ${getDiscussionStatusColor(discussion.status || DiscussionStatus.NotStarted)} hover:opacity-90 shadow-sm`
+                      }`}
+                      title={`Click to change status (Current: ${getDiscussionStatusText(discussion.status || DiscussionStatus.NotStarted)})`}
+                    >
+                      {updatingDiscussions.has(discussion.id) ? (
+                        <>
+                          <div className="w-3 h-3 border-2 border-gray-400 border-t-transparent rounded-full animate-spin mr-1.5"></div>
+                          <span>Updating...</span>
+                        </>
+                      ) : (
+                        <>
+                          <div className="w-2 h-2 bg-white bg-opacity-70 rounded-full mr-1.5"></div>
+                          {getDiscussionStatusText(discussion.status || DiscussionStatus.NotStarted)}
+                        </>
+                      )}
+                    </span>
+
+                    {discussion.lastTaskStatus !== undefined && discussion.lastTaskStatus !== null && (
+                      <span className={`inline-flex items-center px-3 py-1.5 rounded-full text-xs font-medium text-white shadow-sm ${
+                        discussion.lastTaskStatus === TaskStatusBg.Backlog ? 'bg-slate-500' :
+                        discussion.lastTaskStatus === TaskStatusBg.ToDo ? 'bg-amber-500' :
+                        discussion.lastTaskStatus === TaskStatusBg.InProgress ? 'bg-blue-500' :
+                        discussion.lastTaskStatus === TaskStatusBg.InReview ? 'bg-purple-500' :
+                        discussion.lastTaskStatus === TaskStatusBg.Done ? 'bg-emerald-500' : 'bg-gray-500'
+                      }`}>
+                        <div className="w-2 h-2 bg-white bg-opacity-70 rounded-full mr-1.5"></div>
+                        Task: {getTaskStatusText(discussion.lastTaskStatus)}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div className="flex items-center text-xs text-gray-500">
+                      <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      {new Date(discussion.createdAt).toLocaleString()}
+                    </div>
+
+                    <div className="grid grid-cols-3 sm:flex sm:items-center gap-2 w-full sm:w-auto">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate(`/reports/${discussion.id}`);
+                        }}
+                        className="inline-flex items-center justify-center px-3 py-2.5 sm:px-3 sm:py-2 rounded-xl bg-blue-500 hover:bg-blue-600 text-white text-xs sm:text-sm font-medium transition-all duration-200 hover:scale-105 active:scale-95 shadow-sm min-h-[44px]"
+                        title="View Tasks Report"
+                      >
+                        <ListChecksIcon size={14} className="sm:mr-0 mr-1.5" />
+                        <span className="sm:hidden truncate">Reports</span>
+                      </button>
+
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDownloadExcel(discussion.id, discussion.title);
+                        }}
+                        className="inline-flex items-center justify-center px-3 py-2.5 sm:px-3 sm:py-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white text-xs sm:text-sm font-medium transition-all duration-200 hover:scale-105 active:scale-95 shadow-sm min-h-[44px]"
+                        title="Download Tasks Excel"
+                      >
+                        <DownloadIcon size={14} className="sm:mr-0 mr-1.5" />
+                        <span className="sm:hidden truncate">Download</span>
+                      </button>
+                      
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenUsersDrawer();
+                        }}
+                        className="inline-flex items-center justify-center px-3 py-2.5 sm:px-3 sm:py-2 rounded-xl bg-purple-500 hover:bg-purple-600 text-white text-xs sm:text-sm font-medium transition-all duration-200 hover:scale-105 active:scale-95 shadow-sm min-h-[44px]"
+                        title="Manage Users"
+                      >
+                        <UsersIcon size={14} className="sm:mr-0 mr-1.5" />
+                        <span className="sm:hidden truncate">Users</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+          
+                {showUsersDrawer && selectedDiscussionId === discussion.id && (
                 <>
                   <div 
-                    className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:bg-opacity-0 lg:invisible transition-opacity duration-300"
+                    className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 transition-opacity duration-300"
                     onClick={handleCloseUsersDrawer}
                   />
                   
-                  <div className={`fixed top-0 right-0 h-full w-full lg:w-96 bg-white shadow-xl z-50 transform transition-transform duration-300 ease-in-out ${
+                  <div className={`fixed top-0 right-0 h-screen w-full sm:w-96 md:w-[28rem] bg-white shadow-2xl z-50 transform transition-all duration-300 ease-out flex flex-col ${
                     showUsersDrawer ? 'translate-x-0' : 'translate-x-full'
                   }`}>
-                    <div className="flex items-center justify-between p-4 border-b bg-gray-50">
-                      <h3 className="text-lg font-semibold">Manage Users for {discussion.title}</h3>
-                      <button onClick={handleCloseUsersDrawer} className="p-1 hover:bg-gray-200 rounded-full">
-                        <X size={20} />
-                      </button>
+                    <div className="flex-shrink-0 flex items-center justify-between p-4 sm:p-6 border-b bg-gradient-to-r from-purple-500 to-purple-600 text-white">
+                      <div className="flex-1 min-w-0">
+                        <h3 className="text-lg font-semibold">Manage Users</h3>
+                        <p className="text-purple-100 text-sm mt-1 truncate">{discussion.title}</p>
+                      </div>
+                      <div className="flex items-center gap-2 ml-4">
+                      <button
+                          onClick={handleAssignClick}
+                          disabled={selectedUsers.size === 0 || isAssigning}
+                          className={`px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg transition-colors text-sm font-medium ${
+                            selectedUsers.size === 0 || isAssigning
+                              ? 'bg-white/10 text-white/50 cursor-not-allowed'
+                              : 'bg-white/20 hover:bg-white/30 text-white'
+                          }`}
+                        >
+                          {isAssigning ? (
+                            <div className="flex items-center gap-2">
+                              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                              Assigning...
+                            </div>
+                          ) : (
+                            `Assign (${selectedUsers.size})`
+                          )}
+                        </button>
+                        <button 
+                          onClick={handleCloseUsersDrawer} 
+                          className="p-1.5 sm:p-2 hover:bg-white/10 rounded-lg transition-colors"
+                        >
+                          <X size={18} />
+                        </button>
+                      </div>
                     </div>
-                    
-                    <div className="p-4 border-b">
-                      <input
-                        type="text"
-                        placeholder="Search users..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                      />
+
+                    <div className="flex-shrink-0 p-4 bg-gray-50 border-b">
+                      <div className="relative">
+                        <svg className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                        </svg>
+                        <input
+                          type="text"
+                          placeholder="Search users..."
+                          value={searchTerm}
+                          onChange={(e) => setSearchTerm(e.target.value)}
+                          className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white text-sm"
+                          autoFocus
+                        />
+                      </div>
                     </div>
-                    
-                    <div className="p-4 flex-1 overflow-y-auto max-h-[calc(100vh-200px)]">
+
+                    {selectedUsers.size > 0 && (
+                      <div className="flex-shrink-0 px-4 py-2 bg-purple-50 border-b border-purple-100">
+                        <p className="text-sm text-purple-700">
+                          <span className="font-medium">{selectedUsers.size}</span> user{selectedUsers.size !== 1 ? 's' : ''} selected
+                        </p>
+                      </div>
+                    )}
+
+                    <div className="flex-1 overflow-y-auto p-4 space-y-1">
                       {filteredUsers.map((user) => (
-                        <label key={user.userId} className="flex items-center p-2 hover:bg-gray-50 rounded cursor-pointer mb-1">
-                          <input
-                            type="checkbox"
-                            checked={selectedUsers.has(user.userId)}
-                            onChange={() => handleUserToggle(user.userId)}
-                            className="mr-3 h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded"
-                          />
-                          <span className="text-sm">{user.kullaniciAdi}</span>
+                        <label 
+                          key={user.userId} 
+                          className="flex items-center p-3 hover:bg-gray-50 rounded-xl cursor-pointer transition-colors group border border-transparent hover:border-gray-200"
+                        >
+                          <div className="relative flex-shrink-0">
+                            <input
+                              type="checkbox"
+                              checked={selectedUsers.has(user.userId)}
+                              onChange={() => handleUserToggle(user.userId)}
+                              className="w-5 h-5 text-purple-600 bg-white border-2 border-gray-300 rounded focus:ring-purple-500 focus:ring-2 transition-colors"
+                            />
+                            {selectedUsers.has(user.userId) && (
+                              <div className="absolute inset-0 flex items-center justify-center">
+                                <svg className="w-3 h-3 text-white pointer-events-none" fill="currentColor" viewBox="0 0 20 20">
+                                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                </svg>
+                              </div>
+                            )}
+                          </div>
+                          <div className="ml-4 flex-1 min-w-0">
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm font-medium text-gray-900 group-hover:text-purple-600 transition-colors truncate">
+                                {user.kullaniciAdi}
+                              </span>
+                              {selectedUsers.has(user.userId) && (
+                                <div className="ml-2 w-2 h-2 bg-purple-500 rounded-full flex-shrink-0"></div>
+                              )}
+                            </div>
+                          </div>
                         </label>
                       ))}
+                      
                       {filteredUsers.length === 0 && (
-                        <p className="text-gray-500 text-sm text-center py-8">No users found.</p>
+                        <div className="text-center py-12">
+                          <div className="mx-auto w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+                            <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z" />
+                            </svg>
+                          </div>
+                          <p className="text-gray-500 text-sm font-medium mb-1">No users found</p>
+                          <p className="text-gray-400 text-xs">Try adjusting your search terms</p>
+                        </div>
                       )}
                     </div>
                     
-                    <div className="p-4 border-t bg-gray-50 flex justify-end gap-2">
-                      <button
-                        onClick={handleCloseUsersDrawer}
-                        className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors"
-                      >
-                        Close
-                      </button>
+                    <div className="flex-shrink-0 p-4 border-t bg-gray-50">
+                      <div className="flex items-center justify-between text-xs text-gray-500 mb-3">
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => {
+                              filteredUsers.forEach(user => {
+                                setSelectedUsers(prev => new Set(prev.add(user.userId)));
+                              });
+                            }}
+                            className="text-purple-600 hover:text-purple-700 font-medium"
+                          >
+                            Select All
+                          </button>
+                          <span className="text-gray-300">•</span>
+                          <button
+                            onClick={() => setSelectedUsers(new Set())}
+                            className="text-gray-600 hover:text-gray-700 font-medium"
+                          >
+                            Clear All
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </>
               )}
             </div>
             );
-      
           })
         )}
       </div>
@@ -1672,11 +1921,8 @@ const ChatApplication: React.FC = () => {
             <div className="flex items-center space-x-3">
               <div className="relative">
                 <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-semibold">
-                  {selectedUser?.kullaniciAdi?.[0]}
+                  {selectedUser?.kullaniciAdi[0]}
                 </div>
-                {/* <div className="absolute -bottom-0.5 -right-0.5">
-                  <StatusIndicator status={selectedUser?.status || 'offline'} />
-                </div> */}
               </div>
               <div>
                 <h2 className="font-semibold text-gray-900">{selectedDiscussion?.title}</h2>
@@ -1694,7 +1940,7 @@ const ChatApplication: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-6">
+        <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-4 space-y-6">
           {messages.map((message) => (
             <div
                 key={message.id}
@@ -1764,7 +2010,10 @@ const ChatApplication: React.FC = () => {
                   </div>
                 )}
                 <div className={`text-xs text-gray-400 mt-1`}>
-                  {message.createdAt?.toLocaleString()}
+                  {(() => {
+                    const raw = (message as any).createdAt ?? (message as any).timestamp;
+                    try { return raw ? new Date(raw).toLocaleString() : ''; } catch { return ''; }
+                  })()}
                 </div>
                 {message.senderId === currentUser?.userId && (message.messageType === 1 || message.messageType === 4) && (
                     <div className="flex space-x-2 mt-2 text-xs opacity-75">
@@ -1944,7 +2193,7 @@ const ChatApplication: React.FC = () => {
       {!selectedUser && (
         <div className="hidden lg:flex flex-1 items-center justify-center bg-gradient-to-br from-blue-50 to-purple-50">
           <div className="text-center">
-            <div className="w-24 h-24 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full flex items-center justify-center mx-auto mb-4">
+            <div className="w-24 h-24 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full flex items-center justify-center text-white text-sm font-medium">
               <Users size={40} className="text-white" />
             </div>
             <h3 className="text-xl font-semibold text-slate-700 mb-2">Welcome to Chat</h3>
@@ -1956,7 +2205,7 @@ const ChatApplication: React.FC = () => {
       {selectedUser && !selectedDiscussion && (
         <div className="hidden lg:flex flex-1 items-center justify-center bg-gradient-to-br from-purple-50 to-pink-50">
           <div className="text-center">
-            <div className="w-24 h-24 bg-gradient-to-br from-purple-400 to-pink-500 rounded-full flex items-center justify-center mx-auto mb-4">
+            <div className="w-24 h-24 bg-gradient-to-br from-purple-400 to-pink-500 rounded-full flex items-center justify-center text-white text-sm font-medium">
               <MessageSquare size={40} className="text-white" />
             </div>
             <h3 className="text-xl font-semibold text-slate-700 mb-2">Select a Discussion</h3>
