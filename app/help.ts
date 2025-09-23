@@ -241,6 +241,8 @@ export interface Message {
     idriveUrl?: string;
     fileUrl?: string;
     description?: string;
+    isSeen?: boolean;
+    seenAt?: Date;
 }
 
 export interface Resource {

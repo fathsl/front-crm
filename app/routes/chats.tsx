@@ -265,7 +265,7 @@ const ChatApplication: React.FC = () => {
       const response = await fetch(`${baseUrl}/api/User`);
       if (response.ok) {
         const data = await response.json();
-        const filteredUsers = data.filter((user: User) => user.userId !== currentUser?.userId);
+        const filteredUsers = data.filter((user: User) => user.userId !== currentUser?.userId).sort((a: User, b: User) => a.kullaniciAdi.localeCompare(b.kullaniciAdi));
         setUsers(filteredUsers);
         console.log("users", filteredUsers);
       } else {
@@ -318,14 +318,18 @@ const ChatApplication: React.FC = () => {
 
   const fetchAssignedUsers = useCallback(async (discussionId: number) => {
     if (loadingAssignedUsers[discussionId]) return;
-    
+   
     setLoadingAssignedUsers(prev => ({ ...prev, [discussionId]: true }));
-    
+   
     try {
       const response = await fetch(`${baseUrl}/api/Chat/discussions/${discussionId}/assigned-users`);
       if (response.ok) {
         const data: AssignedUser[] = await response.json();
         setAssignedUsers(prev => ({ ...prev, [discussionId]: data }));
+        
+        const assignedUserIds = new Set(data.map(user => user.assignedUserId));
+        setSelectedUsers(assignedUserIds);
+        
         return data;
       } else {
         throw new Error('Failed to fetch assigned users');
@@ -499,7 +503,7 @@ const ChatApplication: React.FC = () => {
         userIds,
         assignedByUserId: currentUser.userId
       };
-  
+
       const response = await fetch(`${baseUrl}/api/Chat/discussions/assign`, {
         method: 'POST',
         headers: {
@@ -507,7 +511,7 @@ const ChatApplication: React.FC = () => {
         },
         body: JSON.stringify(request)
       });
-  
+
       if (response.ok) {
         const result: AssignmentResponse = await response.json();
         
@@ -518,7 +522,7 @@ const ChatApplication: React.FC = () => {
         if (result.totalSkipped > 0) {
           console.log(`${result.totalSkipped} users were already assigned to this discussion`);
         }
-  
+
         setSelectedUsers(new Set());
         handleCloseUsersDrawer();
         
@@ -717,6 +721,62 @@ const ChatApplication: React.FC = () => {
     }
   };
 
+  const markDiscussionMessagesAsSeen = async (discussionId: number, userId: number) => {
+    try {
+      const response = await fetch(`${baseUrl}/api/Chat/discussions/${discussionId}/mark-all-seen?userId=${userId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+ 
+      if (!response.ok) {
+        throw new Error(`Failed to mark discussion messages as seen: ${response.statusText}`);
+      }
+ 
+      return await response.json();
+    } catch (error) {
+      console.error('Error marking discussion messages as seen:', error);
+      throw error;
+    }
+  };
+
+  const getUnreadMessageCount = async (discussionId: number, userId: number) => {
+    try {
+      const response = await fetch(`${baseUrl}/api/Chat/discussions/${discussionId}/unreadcount?userId=${userId}`, {
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+  
+      if (!response.ok) {
+        throw new Error(`Failed to get unread count: ${response.statusText}`);
+      }
+  
+      return await response.json();
+    } catch (error) {
+      console.error('Error getting unread message count:', error);
+      throw error;
+    }
+  };
+
+  const updateUnreadCount = async (discussionId: number) => {
+    try {
+      const currentUserId = currentUser?.userId || 0;
+      const unreadCount = await getUnreadMessageCount(discussionId, currentUserId);
+      
+      setDiscussions(prevDiscussions => 
+        prevDiscussions.map(disc => 
+          disc.id === discussionId 
+            ? { ...disc, unreadCount: unreadCount }
+            : disc
+        )
+      );
+    } catch (error) {
+      console.error('Error updating unread count:', error);
+    }
+  };
+
   const handleUserSelect = (user: User) => {
     setSelectedUser(user);
     setSelectedDiscussion(null);
@@ -727,10 +787,34 @@ const ChatApplication: React.FC = () => {
     setCurrentView('discussions');
   };
 
-  const handleDiscussionSelect = (discussion: Discussion) => {
+  const handleDiscussionSelect = async (discussion: Discussion) => {
     setSelectedDiscussion(discussion);
-    fetchMessages(discussion.id);
     setCurrentView('chat');
+ 
+    try {
+      await fetchMessages(discussion.id);
+     
+      if (currentUser?.userId) {
+        await markDiscussionMessagesAsSeen(discussion.id, currentUser.userId);
+       
+        setMessages(prev =>
+          prev.map(msg => {
+            if (msg.receiverId === currentUser.userId && !msg.isSeen) {
+              return {
+                ...msg,
+                isSeen: true,
+                seenAt: new Date()
+              };
+            }
+            return msg;
+          })
+        );
+      }
+ 
+      updateUnreadCount(discussion.id);
+    } catch (error) {
+      console.error('Error in handleDiscussionSelect:', error);
+    }
   };
 
   const startRecording = async () => {
@@ -1362,20 +1446,7 @@ const ChatApplication: React.FC = () => {
     const handleDownload = () => {
       downloadFile(message.id, message.fileName || 'file');
     };
-  
-    const handleOpen = () => {
-      if (message.idriveUrl) {
-        window.open(message.idriveUrl, '_blank');
-      }
-    };
-  
-    const shareFile = () => {
-      if (message.idriveUrl) {
-        navigator.clipboard.writeText(message.idriveUrl);
-        alert('File URL copied to clipboard!');
-      }
-    };
-  
+
     return (
       <div className={`p-3 rounded-lg border ${message.senderId === currentUser?.userId ? 'bg-blue-50 border-blue-200' : 'bg-white border-gray-200'} w-full`}>
         <div className="flex items-start">
@@ -1400,24 +1471,6 @@ const ChatApplication: React.FC = () => {
                 <DownloadIcon className="w-4 h-4 mr-1" />
                 Download
               </button>
-              {message.idriveUrl && (
-                <>
-                  <button
-                    onClick={handleOpen}
-                    className="inline-flex items-center text-sm text-green-600 hover:text-green-800"
-                  >
-                    <ExternalLink className="w-4 h-4 mr-1" />
-                    Open
-                  </button>
-                  <button
-                    onClick={shareFile}
-                    className="inline-flex items-center text-sm text-purple-600 hover:text-purple-800"
-                  >
-                    <Share className="w-4 h-4 mr-1" />
-                    Share
-                  </button>
-                </>
-              )}
             </div>
           </div>
         </div>
@@ -1608,9 +1661,11 @@ const ChatApplication: React.FC = () => {
         ) : (
           discussions.map((discussion) => {
             const isSelected = selectedDiscussion?.id === discussion.id;
-            const handleOpenUsersDrawer = () => {
+            const handleOpenUsersDrawer = async () => {
               setSelectedDiscussionId(discussion.id);
               setShowUsersDrawer(true);
+              
+              await fetchAssignedUsers(discussion.id);
             };
           
             const handleCloseUsersDrawer = () => {
@@ -1630,7 +1685,7 @@ const ChatApplication: React.FC = () => {
                 return newSet;
               });
             };
-
+          
             return (
               <div
                 key={discussion.id}
@@ -1647,46 +1702,37 @@ const ChatApplication: React.FC = () => {
                   }`}
                 />
                 
-                <div className="p-5 sm:p-6">
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex-1 min-w-0">
-                      <h3 className="text-lg sm:text-xl font-semibold text-gray-900 mb-2 line-clamp-2 group-hover:text-blue-600 transition-colors">
+                <div className="p-4 sm:p-5 lg:p-6">
+                  <div className="flex items-start justify-between mb-3 sm:mb-4">
+                    <div className="flex-1 min-w-0 pr-4">
+                      <h3 className="text-base sm:text-lg lg:text-xl font-semibold text-gray-900 mb-2 line-clamp-2 group-hover:text-blue-600 transition-colors break-words">
                         {discussion.title}
                       </h3>
-                      <p className="text-sm sm:text-base text-gray-600 line-clamp-3 mb-3 leading-relaxed">
+                      <p className="text-sm sm:text-base text-gray-600 line-clamp-2 sm:line-clamp-3 mb-3 leading-relaxed break-words">
                         {discussion.description}
                       </p>
-                    </div>
-                    
-                    <div className="ml-3 sm:hidden">
-                      <div className="w-6 h-6 flex items-center justify-center">
-                        <div className="w-1 h-1 bg-gray-400 rounded-full"></div>
-                        <div className="w-1 h-1 bg-gray-400 rounded-full mx-1"></div>
-                        <div className="w-1 h-1 bg-gray-400 rounded-full"></div>
-                      </div>
                     </div>
                   </div>
           
                   <div className="bg-gray-50 rounded-xl p-3 mb-4">
-                    <div className="flex flex-col sm:flex-row sm:items-center gap-2 text-sm">
-                      <div className="flex items-center text-gray-700">
-                        <div className="w-2 h-2 bg-blue-500 rounded-full mr-2"></div>
-                        <span className="font-medium">From:</span>
-                        <span className="ml-1 text-gray-900">{discussion.senderName}</span>
+                    <div className="flex flex-col gap-2 text-sm">
+                      <div className="flex items-center text-gray-700 min-w-0">
+                        <div className="w-2 h-2 bg-blue-500 rounded-full mr-2 flex-shrink-0"></div>
+                        <span className="font-medium flex-shrink-0">From:</span>
+                        <span className="ml-1 text-gray-900 truncate">{discussion.senderName}</span>
                       </div>
-                      <div className="hidden sm:block text-gray-400">→</div>
-                      <div className="flex items-center text-gray-700">
-                        <div className="w-2 h-2 bg-green-500 rounded-full mr-2"></div>
-                        <span className="font-medium">To:</span>
-                        <span className="ml-1 text-gray-900">{discussion.receiverName}</span>
+                      <div className="flex items-center text-gray-700 min-w-0">
+                        <div className="w-2 h-2 bg-green-500 rounded-full mr-2 flex-shrink-0"></div>
+                        <span className="font-medium flex-shrink-0">To:</span>
+                        <span className="ml-1 text-gray-900 truncate">{discussion.receiverName}</span>
                       </div>
                     </div>
                   </div>
-
+          
                   <div className="flex flex-wrap items-center gap-2 mb-4">
                     <span 
                       onClick={(e) => handleStatusUpdate(discussion.id, discussion.status || DiscussionStatus.NotStarted, e)}
-                      className={`inline-flex items-center px-3 py-1.5 rounded-full text-xs font-medium cursor-pointer transition-all hover:scale-105 active:scale-95 ${
+                      className={`inline-flex items-center px-2.5 sm:px-3 py-1.5 rounded-full text-xs font-medium cursor-pointer transition-all hover:scale-105 active:scale-95 ${
                         updatingDiscussions.has(discussion.id) 
                           ? 'opacity-50 cursor-wait bg-gray-100 text-gray-600' 
                           : `text-white ${getDiscussionStatusColor(discussion.status || DiscussionStatus.NotStarted)} hover:opacity-90 shadow-sm`
@@ -1695,62 +1741,63 @@ const ChatApplication: React.FC = () => {
                     >
                       {updatingDiscussions.has(discussion.id) ? (
                         <>
-                          <div className="w-3 h-3 border-2 border-gray-400 border-t-transparent rounded-full animate-spin mr-1.5"></div>
-                          <span>Updating...</span>
+                          <div className="w-3 h-3 border-2 border-gray-400 border-t-transparent rounded-full animate-spin mr-1.5 flex-shrink-0"></div>
+                          <span className="hidden sm:inline">Updating...</span>
+                          <span className="sm:hidden">...</span>
                         </>
                       ) : (
                         <>
-                          <div className="w-2 h-2 bg-white bg-opacity-70 rounded-full mr-1.5"></div>
-                          {getDiscussionStatusText(discussion.status || DiscussionStatus.NotStarted)}
+                          <div className="w-2 h-2 bg-white bg-opacity-70 rounded-full mr-1.5 flex-shrink-0"></div>
+                          <span className="truncate">{getDiscussionStatusText(discussion.status || DiscussionStatus.NotStarted)}</span>
                         </>
                       )}
                     </span>
-
+          
                     {discussion.lastTaskStatus !== undefined && discussion.lastTaskStatus !== null && (
-                      <span className={`inline-flex items-center px-3 py-1.5 rounded-full text-xs font-medium text-white shadow-sm ${
+                      <span className={`inline-flex items-center px-2.5 sm:px-3 py-1.5 rounded-full text-xs font-medium text-white shadow-sm ${
                         discussion.lastTaskStatus === TaskStatusBg.Backlog ? 'bg-slate-500' :
                         discussion.lastTaskStatus === TaskStatusBg.ToDo ? 'bg-amber-500' :
                         discussion.lastTaskStatus === TaskStatusBg.InProgress ? 'bg-blue-500' :
                         discussion.lastTaskStatus === TaskStatusBg.InReview ? 'bg-purple-500' :
                         discussion.lastTaskStatus === TaskStatusBg.Done ? 'bg-emerald-500' : 'bg-gray-500'
                       }`}>
-                        <div className="w-2 h-2 bg-white bg-opacity-70 rounded-full mr-1.5"></div>
-                        Task: {getTaskStatusText(discussion.lastTaskStatus)}
+                        <div className="w-2 h-2 bg-white bg-opacity-70 rounded-full mr-1.5 flex-shrink-0"></div>
+                        <span className="truncate">Task: {getTaskStatusText(discussion.lastTaskStatus)}</span>
                       </span>
                     )}
                   </div>
-
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          
+                  <div className="flex flex-col gap-3">
                     <div className="flex items-center text-xs text-gray-500">
-                      <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-4 h-4 mr-1.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
-                      {new Date(discussion.createdAt).toLocaleString()}
+                      <span className="truncate">{new Date(discussion.createdAt).toLocaleString()}</span>
                     </div>
-
-                    <div className="grid grid-cols-3 sm:flex sm:items-center gap-2 w-full sm:w-auto">
+          
+                    <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
                           navigate(`/reports/${discussion.id}`);
                         }}
-                        className="inline-flex items-center justify-center px-3 py-2.5 sm:px-3 sm:py-2 rounded-xl bg-blue-500 hover:bg-blue-600 text-white text-xs sm:text-sm font-medium transition-all duration-200 hover:scale-105 active:scale-95 shadow-sm min-h-[44px]"
+                        className="flex-1 sm:flex-none inline-flex items-center justify-center px-3 py-2.5 rounded-xl bg-blue-500 hover:bg-blue-600 text-white text-xs sm:text-sm font-medium transition-all duration-200 hover:scale-105 active:scale-95 shadow-sm min-h-[44px]"
                         title="View Tasks Report"
                       >
-                        <ListChecksIcon size={14} className="sm:mr-0 mr-1.5" />
-                        <span className="sm:hidden truncate">Reports</span>
+                        <ListChecksIcon size={12} className="mr-1 flex-shrink-0" />
+                        <span className="text-xs">Reports</span>
                       </button>
-
+          
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
                           handleDownloadExcel(discussion.id, discussion.title);
                         }}
-                        className="inline-flex items-center justify-center px-3 py-2.5 sm:px-3 sm:py-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white text-xs sm:text-sm font-medium transition-all duration-200 hover:scale-105 active:scale-95 shadow-sm min-h-[44px]"
+                        className="flex-1 sm:flex-none inline-flex items-center justify-center px-1 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white text-xs sm:text-sm font-medium transition-all duration-200 hover:scale-105 active:scale-95 shadow-sm min-h-[44px]"
                         title="Download Tasks Excel"
                       >
-                        <DownloadIcon size={14} className="sm:mr-0 mr-1.5" />
-                        <span className="sm:hidden truncate">Download</span>
+                        <DownloadIcon size={12} className="mr-1 flex-shrink-0" />
+                        <span className="text-xs">Download</span>
                       </button>
                       
                       <button
@@ -1758,11 +1805,11 @@ const ChatApplication: React.FC = () => {
                           e.stopPropagation();
                           handleOpenUsersDrawer();
                         }}
-                        className="inline-flex items-center justify-center px-3 py-2.5 sm:px-3 sm:py-2 rounded-xl bg-purple-500 hover:bg-purple-600 text-white text-xs sm:text-sm font-medium transition-all duration-200 hover:scale-105 active:scale-95 shadow-sm min-h-[44px]"
+                        className="flex-1 sm:flex-none inline-flex items-center justify-center px-1 py-2.5 rounded-xl bg-purple-500 hover:bg-purple-600 text-white text-xs sm:text-sm font-medium transition-all duration-200 hover:scale-105 active:scale-95 shadow-sm min-h-[44px]"
                         title="Manage Users"
                       >
-                        <UsersIcon size={14} className="sm:mr-0 mr-1.5" />
-                        <span className="sm:hidden truncate">Users</span>
+                        <UsersIcon size={12} className="mr-1 flex-shrink-0" />
+                        <span className="text-xs">Users</span>
                       </button>
                     </div>
                   </div>
@@ -1775,19 +1822,19 @@ const ChatApplication: React.FC = () => {
                     onClick={handleCloseUsersDrawer}
                   />
                   
-                  <div className={`fixed top-0 right-0 h-screen w-full sm:w-96 md:w-[28rem] bg-white shadow-2xl z-50 transform transition-all duration-300 ease-out flex flex-col ${
+                  <div className={`fixed inset-0 sm:top-0 sm:right-0 sm:left-auto sm:inset-auto sm:h-screen w-full sm:w-80 md:w-96 lg:w-[28rem] bg-white shadow-2xl z-50 transform transition-all duration-300 ease-out flex flex-col ${
                     showUsersDrawer ? 'translate-x-0' : 'translate-x-full'
                   }`}>
-                    <div className="flex-shrink-0 flex items-center justify-between p-4 sm:p-6 border-b bg-gradient-to-r from-purple-500 to-purple-600 text-white">
-                      <div className="flex-1 min-w-0">
-                        <h3 className="text-lg font-semibold">Manage Users</h3>
-                        <p className="text-purple-100 text-sm mt-1 truncate">{discussion.title}</p>
+                    <div className="flex-shrink-0 flex items-start sm:items-center justify-between p-4 sm:p-6 border-b bg-gradient-to-r from-purple-500 to-purple-600 text-white min-h-[80px] sm:min-h-0">
+                      <div className="flex-1 min-w-0 pr-4">
+                        <h3 className="text-lg font-semibold mb-1">Manage Users</h3>
+                        <p className="text-purple-100 text-sm break-words line-clamp-2">{discussion.title}</p>
                       </div>
-                      <div className="flex items-center gap-2 ml-4">
-                      <button
+                      <div className="flex flex-col sm:flex-row items-end sm:items-center gap-2 sm:gap-3 flex-shrink-0">
+                        <button
                           onClick={handleAssignClick}
                           disabled={selectedUsers.size === 0 || isAssigning}
-                          className={`px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg transition-colors text-sm font-medium ${
+                          className={`px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg transition-colors text-sm font-medium whitespace-nowrap ${
                             selectedUsers.size === 0 || isAssigning
                               ? 'bg-white/10 text-white/50 cursor-not-allowed'
                               : 'bg-white/20 hover:bg-white/30 text-white'
@@ -1796,7 +1843,8 @@ const ChatApplication: React.FC = () => {
                           {isAssigning ? (
                             <div className="flex items-center gap-2">
                               <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                              Assigning...
+                              <span className="hidden sm:inline">Assigning...</span>
+                              <span className="sm:hidden">...</span>
                             </div>
                           ) : (
                             `Assign (${selectedUsers.size})`
@@ -1804,16 +1852,16 @@ const ChatApplication: React.FC = () => {
                         </button>
                         <button 
                           onClick={handleCloseUsersDrawer} 
-                          className="p-1.5 sm:p-2 hover:bg-white/10 rounded-lg transition-colors"
+                          className="p-1.5 sm:p-2 hover:bg-white/10 rounded-lg transition-colors flex-shrink-0"
                         >
                           <X size={18} />
                         </button>
                       </div>
                     </div>
-
+          
                     <div className="flex-shrink-0 p-4 bg-gray-50 border-b">
                       <div className="relative">
-                        <svg className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                         </svg>
                         <input
@@ -1826,7 +1874,7 @@ const ChatApplication: React.FC = () => {
                         />
                       </div>
                     </div>
-
+          
                     {selectedUsers.size > 0 && (
                       <div className="flex-shrink-0 px-4 py-2 bg-purple-50 border-b border-purple-100">
                         <p className="text-sm text-purple-700">
@@ -1834,71 +1882,113 @@ const ChatApplication: React.FC = () => {
                         </p>
                       </div>
                     )}
+          
+                <div className="flex-1 overflow-y-auto p-4 space-y-1 min-h-0">
+                  {filteredUsers.map((user) => {
+                    const isSelected = selectedUsers.has(user.userId);
+                    const isAlreadyAssigned = assignedUsers[selectedDiscussionId || 0]?.some(
+                      assignedUser => assignedUser.assignedUserId === user.userId
+                    ) || false;
+                    const isNewlySelected = isSelected && !isAlreadyAssigned;
 
-                    <div className="flex-1 overflow-y-auto p-4 space-y-1">
-                      {filteredUsers.map((user) => (
-                        <label 
-                          key={user.userId} 
-                          className="flex items-center p-3 hover:bg-gray-50 rounded-xl cursor-pointer transition-colors group border border-transparent hover:border-gray-200"
-                        >
-                          <div className="relative flex-shrink-0">
-                            <input
-                              type="checkbox"
-                              checked={selectedUsers.has(user.userId)}
-                              onChange={() => handleUserToggle(user.userId)}
-                              className="w-5 h-5 text-purple-600 bg-white border-2 border-gray-300 rounded focus:ring-purple-500 focus:ring-2 transition-colors"
-                            />
-                            {selectedUsers.has(user.userId) && (
-                              <div className="absolute inset-0 flex items-center justify-center">
-                                <svg className="w-3 h-3 text-white pointer-events-none" fill="currentColor" viewBox="0 0 20 20">
-                                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                                </svg>
-                              </div>
-                            )}
-                          </div>
-                          <div className="ml-4 flex-1 min-w-0">
-                            <div className="flex items-center justify-between">
-                              <span className="text-sm font-medium text-gray-900 group-hover:text-purple-600 transition-colors truncate">
-                                {user.kullaniciAdi}
-                              </span>
-                              {selectedUsers.has(user.userId) && (
-                                <div className="ml-2 w-2 h-2 bg-purple-500 rounded-full flex-shrink-0"></div>
+                    return (
+                      <label 
+                        key={user.userId} 
+                        className={`flex items-center p-3 rounded-xl cursor-pointer transition-colors group border-2 ${
+                          isAlreadyAssigned 
+                            ? 'bg-green-50 hover:bg-green-100 border-green-200' 
+                            : isNewlySelected
+                            ? 'bg-blue-50 hover:bg-blue-100 border-blue-200'
+                            : 'hover:bg-gray-50 border-transparent hover:border-gray-200'
+                        }`}
+                      >
+                        <div className="relative flex-shrink-0">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => handleUserToggle(user.userId)}
+                            className={`w-5 h-5 bg-white border-2 rounded focus:ring-2 transition-colors ${
+                              isAlreadyAssigned
+                                ? 'text-green-600 border-green-300 focus:ring-green-500'
+                                : 'text-purple-600 border-gray-300 focus:ring-purple-500'
+                            }`}
+                          />
+                          {isSelected && (
+                            <div className="absolute inset-0 flex items-center justify-center">
+                              <svg className="w-3 h-3 text-white pointer-events-none" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                              </svg>
+                            </div>
+                          )}
+                        </div>
+                        
+                        <div className="ml-4 flex-1 min-w-0">
+                          <div className="flex items-center justify-between">
+                            <span className={`text-sm font-medium transition-colors truncate ${
+                              isAlreadyAssigned
+                                ? 'text-green-900 group-hover:text-green-700'
+                                : isNewlySelected
+                                ? 'text-blue-900 group-hover:text-blue-700'
+                                : 'text-gray-900 group-hover:text-purple-600'
+                            }`}>
+                              {user.kullaniciAdi}
+                            </span>
+                            
+                            <div className="flex items-center gap-2 ml-2">
+                              {isAlreadyAssigned && (
+                                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                  <div className="w-1.5 h-1.5 bg-green-500 rounded-full mr-1"></div>
+                                  Assigned
+                                </span>
+                              )}
+                              {isNewlySelected && (
+                                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                  <div className="w-1.5 h-1.5 bg-blue-500 rounded-full mr-1"></div>
+                                  New
+                                </span>
+                              )}
+                              {isSelected && (
+                                <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                                  isAlreadyAssigned ? 'bg-green-500' : 'bg-blue-500'
+                                }`}></div>
                               )}
                             </div>
                           </div>
-                        </label>
-                      ))}
-                      
-                      {filteredUsers.length === 0 && (
-                        <div className="text-center py-12">
-                          <div className="mx-auto w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
-                            <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z" />
-                            </svg>
-                          </div>
-                          <p className="text-gray-500 text-sm font-medium mb-1">No users found</p>
-                          <p className="text-gray-400 text-xs">Try adjusting your search terms</p>
                         </div>
-                      )}
+                      </label>
+                    );
+                  })}
+                  
+                  {filteredUsers.length === 0 && (
+                    <div className="text-center py-12">
+                      <div className="mx-auto w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+                        <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z" />
+                        </svg>
+                      </div>
+                      <p className="text-gray-500 text-sm font-medium mb-1">No users found</p>
+                      <p className="text-gray-400 text-xs">Try adjusting your search terms</p>
                     </div>
+                  )}
+                </div>
                     
                     <div className="flex-shrink-0 p-4 border-t bg-gray-50">
-                      <div className="flex items-center justify-between text-xs text-gray-500 mb-3">
-                        <div className="flex gap-2">
+                      <div className="flex items-center justify-between text-xs text-gray-500 gap-4">
+                        <div className="flex gap-2 flex-wrap">
                           <button
                             onClick={() => {
                               filteredUsers.forEach(user => {
                                 setSelectedUsers(prev => new Set(prev.add(user.userId)));
                               });
                             }}
-                            className="text-purple-600 hover:text-purple-700 font-medium"
+                            className="text-purple-600 hover:text-purple-700 font-medium whitespace-nowrap"
                           >
                             Select All
                           </button>
                           <span className="text-gray-300">•</span>
                           <button
                             onClick={() => setSelectedUsers(new Set())}
-                            className="text-gray-600 hover:text-gray-700 font-medium"
+                            className="text-gray-600 hover:text-gray-700 font-medium whitespace-nowrap"
                           >
                             Clear All
                           </button>
@@ -1908,7 +1998,7 @@ const ChatApplication: React.FC = () => {
                   </div>
                 </>
               )}
-            </div>
+              </div>
             );
           })
         )}
@@ -2196,12 +2286,14 @@ const ChatApplication: React.FC = () => {
             <div className="w-24 h-24 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full flex items-center justify-center text-white text-sm font-medium">
               <Users size={40} className="text-white" />
             </div>
-            <h3 className="text-xl font-semibold text-slate-700 mb-2">Welcome to Chat</h3>
-            <p className="text-slate-500">Select a contact to start messaging</p>
+            <div>
+              <h3 className="text-xl font-semibold text-slate-700 mb-2">Welcome to Chat</h3>
+              <p className="text-slate-500">Select a contact to start messaging</p>
+            </div>
           </div>
         </div>
       )}
-      
+
       {selectedUser && !selectedDiscussion && (
         <div className="hidden lg:flex flex-1 items-center justify-center bg-gradient-to-br from-purple-50 to-pink-50">
           <div className="text-center">
