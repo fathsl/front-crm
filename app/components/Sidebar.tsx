@@ -188,7 +188,7 @@ const Sidebar: FC<SidebarProps> = ({
           <div className="p-4 border-t border-slate-200">
             <button className="w-full flex items-center space-x-3 px-3 py-2.5 text-sm font-medium text-red-600 rounded-xl hover:bg-red-50 hover:border-red-200 transition-all duration-200 border border-transparent">
               <LogOut className="w-5 h-5" />
-              <span>Log Out</span>
+              {collapsed ? null : <span>Log Out</span>}
             </button>
           </div>
         </div>

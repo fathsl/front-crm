@@ -11,6 +11,7 @@ import i18n from './i18n';
 
 import type { Route } from "./+types/root";
 import "./app.css";
+import { ToastProvider } from "./components/ToastNotificationSystem";
 
 export const links: Route.LinksFunction = () => [
   { rel: "preconnect", href: "https://fonts.googleapis.com" },
@@ -45,9 +46,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   return (
+    <ToastProvider>
     <I18nextProvider i18n={i18n}>
       <Outlet />
     </I18nextProvider>
+    </ToastProvider>
   );
 }
 

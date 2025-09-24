@@ -1,0 +1,254 @@
+import React, { useState, useEffect, createContext, useContext } from 'react';
+import { X, MessageCircle, FileText, Mic, CheckCircle, Clock } from 'lucide-react';
+
+interface Toast {
+  id: string;
+  type: 'message' | 'file' | 'voice' | 'task';
+  senderName: string;
+  content: string;
+  createdAt: Date;
+  duration?: number;
+}
+
+interface ToastContextType {
+  addToast: (toast: Omit<Toast, 'id'>) => void;
+  removeToast: (id: string) => void;
+}
+
+const ToastContext = createContext<ToastContextType | undefined>(undefined);
+
+export const useToast = () => {
+  const context = useContext(ToastContext);
+  if (!context) {
+    throw new Error('useToast must be used within ToastProvider');
+  }
+  return context;
+};
+
+const ToastNotification: React.FC<{ toast: Toast; onClose: (id: string) => void }> = ({ toast, onClose }) => {
+  const getIcon = () => {
+    switch (toast.type) {
+      case 'message':
+        return <MessageCircle className="w-5 h-5 text-blue-500" />;
+      case 'file':
+        return <FileText className="w-5 h-5 text-green-500" />;
+      case 'voice':
+        return <Mic className="w-5 h-5 text-purple-500" />;
+      case 'task':
+        return <CheckCircle className="w-5 h-5 text-orange-500" />;
+      default:
+        return <MessageCircle className="w-5 h-5 text-blue-500" />;
+    }
+  };
+
+  const getTypeLabel = () => {
+    switch (toast.type) {
+      case 'message':
+        return 'New Message';
+      case 'file':
+        return 'File Shared';
+      case 'voice':
+        return 'Voice Message';
+      case 'task':
+        return 'Task Assigned';
+      default:
+        return 'New Message';
+    }
+  };
+
+  const formatTime = (date: Date) => {
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffMins < 1440) return `${Math.floor(diffMins / 60)}h ago`;
+    return date.toLocaleDateString();
+  };
+
+  const formatDuration = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const truncateContent = (content: string, maxLength: number = 80) => {
+    return content.length > maxLength ? content.substring(0, maxLength) + '...' : content;
+  };
+
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 p-4 mb-3 w-full max-w-sm sm:max-w-md transform transition-all duration-300 ease-out animate-slideIn backdrop-blur-sm bg-opacity-95 dark:bg-opacity-95">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center space-x-2 flex-1 min-w-0">
+          <div className="flex-shrink-0">
+            {getIcon()}
+          </div>
+          <div className="flex flex-col min-w-0">
+            <span className="text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wide">
+              {getTypeLabel()}
+            </span>
+            <div className="flex items-center space-x-1 text-xs text-gray-500 dark:text-gray-400">
+              <Clock className="w-3 h-3" />
+              <span>{formatTime(toast.createdAt)}</span>
+            </div>
+          </div>
+        </div>
+        <button
+          onClick={() => onClose(toast.id)}
+          className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors duration-200 group flex-shrink-0"
+        >
+          <X className="w-4 h-4 text-gray-400 group-hover:text-gray-600 dark:group-hover:text-gray-200" />
+        </button>
+      </div>
+
+      <div className="flex items-center mb-3">
+        <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white text-sm font-bold mr-3 flex-shrink-0">
+          {toast.senderName.charAt(0).toUpperCase()}
+        </div>
+        <div className="min-w-0 flex-1">
+          <h4 className="font-semibold text-gray-900 dark:text-white text-sm truncate">
+            {toast.senderName}
+          </h4>
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            sent you a {toast.type === 'task' ? 'task' : 'message'}
+          </p>
+        </div>
+      </div>
+
+      <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-3">
+        {toast.type === 'voice' && toast.duration ? (
+          <div className="flex items-center space-x-2">
+            <div className="flex-1">
+              <div className="flex items-center space-x-2">
+                <div className="w-2 h-2 bg-purple-500 rounded-full animate-pulse"></div>
+                <span className="text-sm text-gray-700 dark:text-gray-300">Voice message</span>
+              </div>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                Duration: {formatDuration(toast.duration)}
+              </p>
+            </div>
+          </div>
+        ) : (
+          <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed break-words">
+            {truncateContent(toast.content)}
+          </p>
+        )}
+      </div>
+
+      {toast.type === 'file' && (
+        <div className="mt-2 flex items-center space-x-1 text-xs text-green-600 dark:text-green-400">
+          <FileText className="w-3 h-3" />
+          <span>File attachment included</span>
+        </div>
+      )}
+      
+      {toast.type === 'task' && (
+        <div className="mt-2 flex items-center space-x-1 text-xs text-orange-600 dark:text-orange-400">
+          <CheckCircle className="w-3 h-3" />
+          <span>Task requires your attention</span>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const ToastContainer: React.FC<{ toasts: Toast[]; onRemoveToast: (id: string) => void }> = ({ 
+  toasts, 
+  onRemoveToast 
+}) => {
+  if (toasts.length === 0) return null;
+
+  return (
+    <div className="fixed bottom-4 right-4 z-50 flex flex-col-reverse space-y-reverse space-y-2 max-h-screen overflow-hidden">
+      {toasts.map((toast) => (
+        <ToastNotification
+          key={toast.id}
+          toast={toast}
+          onClose={onRemoveToast}
+        />
+      ))}
+    </div>
+  );
+};
+
+export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [toasts, setToasts] = useState<Toast[]>([]);
+
+  const addToast = (toastData: Omit<Toast, 'id'>) => {
+    const newToast: Toast = {
+      ...toastData,
+      id: `toast-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    };
+    
+    setToasts(prev => [...prev, newToast]);
+  };
+
+  const removeToast = (id: string) => {
+    setToasts(prev => prev.filter(toast => toast.id !== id));
+  };
+
+  return (
+    <ToastContext.Provider value={{ addToast, removeToast }}>
+      {children}
+      <ToastContainer toasts={toasts} onRemoveToast={removeToast} />
+      <style>{`
+        @keyframes slideIn {
+          from {
+            transform: translateX(-100%);
+            opacity: 0;
+          }
+          to {
+            transform: translateX(0);
+            opacity: 1;
+          }
+        }
+        
+        .animate-slideIn {
+          animation: slideIn 0.3s ease-out;
+        }
+      `}</style>
+    </ToastContext.Provider>
+  );
+};
+
+export const useMessageToast = (currentUser: any) => {
+  const { addToast } = useToast();
+
+  const showToastForMessage = (message: any, senderName: string) => {
+    if (message.receiverId !== currentUser?.userId) return;
+
+    let toastType: Toast['type'] = 'message';
+    let content = message.content;
+
+    switch (message.messageType) {
+      case 1:
+        toastType = 'message';
+        break;
+      case 2:
+        toastType = 'file';
+        content = message.fileName || 'File attachment';
+        break;
+      case 3:
+        toastType = 'voice';
+        content = 'Voice message';
+        break;
+      case 4:
+        toastType = 'task';
+        content = message.taskTitle || message.content;
+        break;
+      default:
+        toastType = 'message';
+    }
+
+    addToast({
+      type: toastType,
+      senderName: senderName,
+      content: content,
+      createdAt: new Date(message.createdAt || new Date()),
+      duration: message.duration
+    });
+  };
+
+  return { showToastForMessage };
+};

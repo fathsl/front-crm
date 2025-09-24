@@ -1,6 +1,6 @@
 import { useAtomValue } from "jotai";
 import { AlertCircle, ArrowLeft, CheckCircle, Clock, DownloadIcon, Edit3, ExternalLink, EyeIcon, FileIcon, FileText, Hourglass, ListChecksIcon, MessageSquare, Mic, MoreVertical, Paperclip, Pause, Play, Plus, Search, Send, Share, Square, Trash2, Users, UsersIcon, Volume2, X, XCircle } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react"; 
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"; 
 import { formatFileSize, type SendMessageRequest, type User } from "~/help";
 import { DiscussionStatus, type Client, type CreateDiscussionRequest, type Project } from "~/help";
 import type { Discussion } from "~/help";
@@ -9,6 +9,7 @@ import { userAtom } from "~/utils/userAtom";
 import { TaskMessage, TaskStatus } from "~/components/TaskMessage";
 import { TaskPriority } from '~/types/task';      
 import { useNavigate } from "react-router";
+import { useMessageToast } from "~/components/ToastNotificationSystem";
 
 interface MessageResponse {
   id: number;
@@ -46,6 +47,7 @@ interface DiscussionWithLastTask extends Discussion {
   senderName?: string;
   receiverName?: string;
   status?: DiscussionStatus;
+  unreadCount?: number;
 }
 
 interface AssignedUser {
@@ -135,10 +137,15 @@ const ChatApplication: React.FC = () => {
   const [selectedDiscussionId, setSelectedDiscussionId] = useState<number | null>(null);
   const [assignedUsers, setAssignedUsers] = useState<{ [discussionId: number]: AssignedUser[] }>({});
   const [loadingAssignedUsers, setLoadingAssignedUsers] = useState<{ [discussionId: number]: boolean }>({});
-
+  const [discussionCounts, setDiscussionCounts] = useState<{ [userId: number]: number }>({});  
+  const [unseenCounts, setUnseenCounts] = useState<Record<number, number>>({});
+  const [unreadCounts, setUnreadCounts] = useState<Record<number, number>>({});
   const [searchTerm, setSearchTerm] = useState('');
+  const { showToastForMessage } = useMessageToast(currentUser);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
+  const notifiedMessageIdsRef = useRef<Set<number>>(new Set());
+  const lastUnreadCountsRef = useRef<Map<number, number>>(new Map());
 
   const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const audioStreamRef = useRef<MediaStream | null>(null);
@@ -148,7 +155,7 @@ const ChatApplication: React.FC = () => {
   const isRecordingCanceled = useRef(false);
   const navigate = useNavigate();
   const baseUrl = "https://api-crm-tegd.onrender.com";
-  const isAdmin = currentUser?.role === "Yonetici";
+  const isAdmin = currentUser?.role === "Yonetici"
 
   const sortByCreatedAtAsc = (arr: Message[]) => {
     const toTime = (m: any) => {
@@ -316,6 +323,25 @@ const ChatApplication: React.FC = () => {
     fetchClients();
   }, []);
 
+  const updateUnreadCount = useCallback(async (discussionId: number) => {
+    try {
+        const currentUserId = currentUser?.userId;
+        if (!currentUserId) return;
+        
+        const unreadCount = await getUnreadMessageCount(discussionId, currentUserId);
+        
+        setDiscussions(prevDiscussions => 
+            prevDiscussions.map(disc => 
+                disc.id === discussionId 
+                    ? { ...disc, unreadCount: unreadCount }
+                    : disc
+            )
+        );
+    } catch (error) {
+        console.error('Error updating unread count:', error);
+    }
+  }, [currentUser?.userId]);
+
   const fetchAssignedUsers = useCallback(async (discussionId: number) => {
     if (loadingAssignedUsers[discussionId]) return;
    
@@ -348,7 +374,7 @@ const ChatApplication: React.FC = () => {
     setLoading(true);
     try {
         let url = `${baseUrl}/api/Chat/discussions/${currentUserId}`;
-
+        
         if (selectedUserId !== undefined) {
             if (isAdmin) {
                 url = `${baseUrl}/api/Chat/discussions/admin/${currentUserId}/${selectedUserId}`;
@@ -360,42 +386,93 @@ const ChatApplication: React.FC = () => {
         const response = await fetch(url);
         if (response.ok) {
             const data: Discussion[] = await response.json();
-
             const uniqueDiscussions = data.filter((discussion: Discussion, index: number, self: Discussion[]) =>
                 index === self.findIndex((d: Discussion) => d.id === discussion.id)
             );
 
-            setDiscussions(uniqueDiscussions);
+            // Fetch per-discussion counts via messages endpoint (unreadCount, unseenCount) in one batch
+            try {
+              const tuples = await Promise.all(
+                uniqueDiscussions.map(async (d) => {
+                  try {
+                    const resp = await fetch(`${baseUrl}/api/Chat/discussions/${d.id}/messages?userId=${currentUser?.userId || 0}`);
+                    if (!resp.ok) return [d.id, 0, 0] as const;
+                    const payload = await resp.json();
+                    const unread = Number(payload?.unreadCount) || 0;
+                    const unseen = Number(payload?.unseenCount) || 0;
+                    return [d.id, unread, unseen] as const;
+                  } catch {
+                    return [d.id, 0, 0] as const;
+                  }
+                })
+              );
 
-            uniqueDiscussions.forEach((discussion: Discussion) => {
-                fetchAssignedUsers(discussion.id);
-            });
+              // Build maps and set state once
+              const unreadMap: Record<number, number> = {};
+              const unseenMap: Record<number, number> = {};
+              for (const [id, unread, unseen] of tuples) {
+                unreadMap[id] = unread;
+                unseenMap[id] = unseen;
+              }
+
+              setDiscussions(uniqueDiscussions.map((d) => ({ ...d, unreadCount: unreadMap[d.id] ?? 0 })) as any);
+              setUnreadCounts((prev) => ({ ...prev, ...unreadMap }));
+              setUnseenCounts((prev) => ({ ...prev, ...unseenMap }));
+            } catch {
+              setDiscussions(uniqueDiscussions as any);
+            }
         } else {
             throw new Error('Failed to fetch discussions');
         }
-      } catch (error) {
-          console.error('Error fetching discussions:', error);
-      } finally {
-          setLoading(false);
-      }
-  }, [isAdmin, fetchAssignedUsers]);
+    } catch (error) {
+        console.error('Error fetching discussions:', error);
+    } finally {
+        setLoading(false);
+    }
+  }, [isAdmin, fetchAssignedUsers, updateUnreadCount, currentUser?.userId]);
 
   const fetchMessages = useCallback(async (discussionId: number) => {
     if (!currentUser) return;
     
     try {
-      const response = await fetch(`${baseUrl}/api/Chat/discussions/${discussionId}/messages?userId=${currentUser.userId}`);
-      if (response.ok) {
-        const data = await response.json();
-        const sorted = sortByCreatedAtAsc(data as Message[]);
-        setMessages(sorted as Message[]);
-      } else {
-        console.error('Failed to fetch messages');
-      }
+        const response = await fetch(`${baseUrl}/api/Chat/discussions/${discussionId}/messages?userId=${currentUser.userId}`);
+        if (response.ok) {
+            const data = await response.json();
+            console.log("data", data);
+            
+            const { messages, unreadCount, unseenCount } = data;
+            
+            const sorted = sortByCreatedAtAsc(messages as Message[]);
+            setMessages(sorted as Message[]);
+            
+            setUnreadCounts(prev => ({ ...prev, [discussionId]: unreadCount }));
+            setUnseenCounts(prev => ({ ...prev, [discussionId]: unseenCount }));
+
+            // Show toasts for new incoming messages for the current receiver
+            try {
+              const currentId = currentUser?.userId;
+              if (currentId) {
+                for (const msg of sorted as Message[]) {
+                  if (!msg || typeof msg.id !== 'number') continue;
+                  if (notifiedMessageIdsRef.current.has(msg.id)) continue;
+                  // Only toast for messages addressed to current user and not seen
+                  if (msg.receiverId === currentId && (msg as any).isSeen === false) {
+                    const senderName = (msg as any).senderName || selectedUser?.kullaniciAdi || 'New message';
+                    showToastForMessage(msg as any, senderName);
+                    notifiedMessageIdsRef.current.add(msg.id);
+                  }
+                }
+              }
+            } catch (e) {
+              console.error('Toast processing error:', e);
+            }
+        } else {
+            console.error('Failed to fetch messages');
+        }
     } catch (error) {
-      console.error('Error fetching messages:', error);
+        console.error('Error fetching messages:', error);
     }
-  }, [currentUser]);
+}, [currentUser]);
 
   const createDiscussion = async () => {
     if (!selectedUser || !newDiscussionTitle.trim() || isCreatingDiscussion) return;
@@ -570,6 +647,13 @@ const ChatApplication: React.FC = () => {
     }
   };
 
+  const filteredUsers = useMemo(() => (
+    users.filter(user =>
+      user.kullaniciAdi.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (user.email && user.email.toLowerCase().includes(searchTerm.toLowerCase()))
+    )
+  ), [users, searchTerm]);
+
   const handleFileUpload = async (file: File) => {
     if (!selectedDiscussion || !currentUser) {
         console.error('Missing selectedDiscussion or currentUser');
@@ -673,6 +757,17 @@ const ChatApplication: React.FC = () => {
       });
   
       if (response.ok) {
+        const result = await response.json();
+        // Only show a toast locally if this message is addressed to the current user (self-message case)
+        if (currentUser && result?.receiverId && Number(result.receiverId) === Number(currentUser.userId)) {
+          const senderLabel = users.find(u => u.userId === result.senderId)?.kullaniciAdi || currentUser.kullaniciAdi;
+          showToastForMessage({
+            ...result,
+            messageType: 1,
+            content: newMessage,
+            createdAt: new Date()
+          }, senderLabel);
+        }
         setNewMessage('');
         await fetchMessages(selectedDiscussion.id);
       }
@@ -723,21 +818,24 @@ const ChatApplication: React.FC = () => {
 
   const markDiscussionMessagesAsSeen = async (discussionId: number, userId: number) => {
     try {
-      const response = await fetch(`${baseUrl}/api/Chat/discussions/${discussionId}/mark-all-seen?userId=${userId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
+        const response = await fetch(`${baseUrl}/api/Chat/discussions/${discussionId}/mark-all-seen?userId=${userId}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Failed to mark discussion messages as seen: ${response.statusText} - ${errorText}`);
         }
-      });
- 
-      if (!response.ok) {
-        throw new Error(`Failed to mark discussion messages as seen: ${response.statusText}`);
-      }
- 
-      return await response.json();
+
+        const result = await response.json();
+        console.log('Messages marked as seen:', result);
+        return result;
     } catch (error) {
-      console.error('Error marking discussion messages as seen:', error);
-      throw error;
+        console.error('Error marking discussion messages as seen:', error);
+        throw error;
     }
   };
 
@@ -748,34 +846,95 @@ const ChatApplication: React.FC = () => {
           'Content-Type': 'application/json',
         }
       });
-  
       if (!response.ok) {
         throw new Error(`Failed to get unread count: ${response.statusText}`);
       }
-  
-      return await response.json();
+      const count = await response.json();
+      return count;
     } catch (error) {
       console.error('Error getting unread message count:', error);
-      throw error;
+      return 0;
     }
   };
 
-  const updateUnreadCount = async (discussionId: number) => {
-    try {
-      const currentUserId = currentUser?.userId || 0;
-      const unreadCount = await getUnreadMessageCount(discussionId, currentUserId);
-      
-      setDiscussions(prevDiscussions => 
-        prevDiscussions.map(disc => 
-          disc.id === discussionId 
-            ? { ...disc, unreadCount: unreadCount }
-            : disc
-        )
-      );
-    } catch (error) {
-      console.error('Error updating unread count:', error);
-    }
-  };
+  useEffect(() => {
+    const currentUserId = currentUser?.userId;
+    if (!currentUserId || filteredUsers.length === 0 || currentView !== 'users') return;
+
+    const controller = new AbortController();
+    let cancelled = false;
+
+    const run = async () => {
+      try {
+        const toProcess = filteredUsers.slice(0, 20);
+        const results: Array<[number, number]> = [];
+        for (const u of toProcess) {
+          if (cancelled) break;
+          if (discussionCounts[u.userId] !== undefined) {
+            results.push([u.userId, discussionCounts[u.userId]]);
+            continue;
+          }
+          let url = `${baseUrl}/api/Chat/discussions/${currentUserId}/${u.userId}`;
+          if (isAdmin) {
+            url = `${baseUrl}/api/Chat/discussions/admin/${currentUserId}/${u.userId}`;
+          }
+          try {
+            const resp = await fetch(url, { signal: controller.signal });
+            if (!resp.ok) {
+              results.push([u.userId, 0]);
+              continue;
+            }
+            const data = await resp.json();
+            const unique = Array.isArray(data)
+              ? Array.from(new Map((data as any[]).map((d: any) => [d.id, d])).values())
+              : [];
+            const uid = Number(u.userId);
+            let count = unique.filter((d: any) => Number(d.senderId) === uid || Number(d.receiverId) === uid).length;
+
+            const remaining = unique.filter((d: any) => !(Number(d.senderId) === uid || Number(d.receiverId) === uid));
+            for (const d of remaining) {
+              if (cancelled) break;
+              try {
+                const r = await fetch(`${baseUrl}/api/Chat/discussions/${d.id}/assigned-users`, { signal: controller.signal });
+                if (r.ok) {
+                  const assigned: AssignedUser[] = await r.json();
+                  if (assigned.some(au => Number(au.assignedUserId) === uid)) {
+                    count += 1;
+                  }
+                }
+              } catch {
+                console.log('Error fetching assigned users for discussion:', d.id);
+              }
+            }
+
+            results.push([u.userId, count]);
+          } catch {
+            results.push([u.userId, 0]);
+          }
+        }
+        if (cancelled) return;
+        setDiscussionCounts((prev) => {
+          let changed = false;
+          const next = { ...prev } as { [userId: number]: number };
+          for (const [id, count] of results) {
+            if (next[id] !== count) {
+              next[id] = count;
+              changed = true;
+            }
+          }
+          return changed ? next : prev;
+        });
+      } catch (e) {
+        console.error('Error fetching discussion counts (lightweight):', e);
+      }
+    };
+
+    run();
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [filteredUsers, currentUser?.userId, isAdmin, currentView]);
 
   const handleUserSelect = (user: User) => {
     setSelectedUser(user);
@@ -787,33 +946,52 @@ const ChatApplication: React.FC = () => {
     setCurrentView('discussions');
   };
 
+  useEffect(() => {
+    if (!showUsersDrawer || !selectedDiscussionId) return;
+    if (loadingAssignedUsers[selectedDiscussionId]) return;
+    if (assignedUsers[selectedDiscussionId] && assignedUsers[selectedDiscussionId].length > 0) return;
+    fetchAssignedUsers(selectedDiscussionId);
+  }, [showUsersDrawer, selectedDiscussionId, loadingAssignedUsers, assignedUsers, fetchAssignedUsers]);
+
   const handleDiscussionSelect = async (discussion: Discussion) => {
-    setSelectedDiscussion(discussion);
-    setCurrentView('chat');
- 
     try {
-      await fetchMessages(discussion.id);
-     
-      if (currentUser?.userId) {
-        await markDiscussionMessagesAsSeen(discussion.id, currentUser.userId);
-       
-        setMessages(prev =>
-          prev.map(msg => {
-            if (msg.receiverId === currentUser.userId && !msg.isSeen) {
-              return {
-                ...msg,
-                isSeen: true,
-                seenAt: new Date()
-              };
+        setSelectedDiscussion(discussion);
+        setCurrentView('chat');
+
+        await fetchMessages(discussion.id);
+
+        if (currentUser?.userId) {
+            const isReceiver = discussion.receiverId === currentUser.userId;
+            
+            if (isReceiver) {
+                await markDiscussionMessagesAsSeen(discussion.id, currentUser.userId);
+                
+                setMessages(prev =>
+                    prev.map(msg => {
+                        if (msg.receiverId === currentUser.userId && !msg.isSeen) {
+                            return {
+                                ...msg,
+                                isSeen: true,
+                                seenAt: new Date()
+                            };
+                        }
+                        return msg;
+                    })
+                );
+
+                setDiscussions(prevDiscussions => 
+                    prevDiscussions.map(disc => 
+                        disc.id === discussion.id 
+                            ? { ...disc, unreadCount: 0 }
+                            : disc
+                    )
+                );
             }
-            return msg;
-          })
-        );
-      }
- 
-      updateUnreadCount(discussion.id);
+        }
     } catch (error) {
-      console.error('Error in handleDiscussionSelect:', error);
+        console.error('Error in handleDiscussionSelect:', error);
+        setSelectedDiscussion(discussion);
+        setCurrentView('chat');
     }
   };
 
@@ -941,7 +1119,16 @@ const ChatApplication: React.FC = () => {
             fileName: result.fileName,
             mimeType: result.mimeType
         };
-       
+      
+      // Only show a toast locally if this voice message is addressed to the current user (self-message case)
+      if (currentUser && newVoiceMessage.receiverId && Number(newVoiceMessage.receiverId) === Number(currentUser.userId)) {
+          const senderLabel = users.find(u => u.userId === newVoiceMessage.senderId)?.kullaniciAdi || currentUser.kullaniciAdi;
+          showToastForMessage({
+            ...newVoiceMessage,
+            messageType: 3,
+            duration: recordingTime
+          }, senderLabel);
+      }
       setMessages(prev => sortByCreatedAtAsc([...(prev as Message[]), newVoiceMessage]));
       setAudioBlob(null);
       setRecordingTime(0);
@@ -1061,11 +1248,6 @@ const ChatApplication: React.FC = () => {
     }
   };
 
-  const filteredUsers = users.filter(user =>
-    user.kullaniciAdi.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (user.email && user.email.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
-
   const statusOptions = [
     { value: TaskStatus.Backlog, label: 'Backlog', icon: Clock, color: 'text-gray-600 bg-gray-50' },
     { value: TaskStatus.ToDo, label: 'Todo', icon: AlertCircle, color: 'text-yellow-600 bg-yellow-100' },
@@ -1089,6 +1271,72 @@ const ChatApplication: React.FC = () => {
   
     return () => clearInterval(interval);
   }, [selectedDiscussion, fetchMessages]);
+
+  // Background polling to show toasts for new unseen messages for the current user
+  // Runs at a gentle cadence and only when a user is logged in
+  useEffect(() => {
+    if (!currentUser?.userId) return;
+
+    let cancelled = false;
+    const controller = new AbortController();
+
+    const tick = async () => {
+      try {
+        // Fetch all discussions for currentUser only (no selectedUser filter)
+        const resp = await fetch(`${baseUrl}/api/Chat/discussions/${currentUser.userId}`, { signal: controller.signal });
+        if (!resp.ok) return;
+        const data: Discussion[] = await resp.json();
+        const unique = Array.isArray(data)
+          ? data.filter((d, i, self) => i === self.findIndex(x => x.id === d.id))
+          : [];
+
+        // Limit to first 12 discussions to keep it light
+        const slice = unique.slice(0, 12);
+        for (const d of slice) {
+          if (cancelled) break;
+          try {
+            const cResp = await fetch(`${baseUrl}/api/Chat/discussions/${d.id}/unreadcount?userId=${currentUser.userId}`, { signal: controller.signal });
+            if (!cResp.ok) continue;
+            const unread = Number(await cResp.json()) || 0;
+            const prev = lastUnreadCountsRef.current.get(d.id) || 0;
+            lastUnreadCountsRef.current.set(d.id, unread);
+
+            // If unread increased, fetch messages to identify the new unseen ones and toast them
+            if (unread > prev) {
+              const mResp = await fetch(`${baseUrl}/api/Chat/discussions/${d.id}/messages?userId=${currentUser.userId}`, { signal: controller.signal });
+              if (!mResp.ok) continue;
+              const payload = await mResp.json();
+              const arr: Message[] = Array.isArray(payload?.messages) ? payload.messages : (Array.isArray(payload) ? payload : []);
+              const sorted = sortByCreatedAtAsc(arr);
+              for (const msg of sorted) {
+                if (!msg || typeof (msg as any).id !== 'number') continue;
+                if (notifiedMessageIdsRef.current.has((msg as any).id)) continue;
+                if ((msg as any).receiverId === currentUser.userId && (msg as any).isSeen === false) {
+                  const senderName = (msg as any).senderName || 'New message';
+                  showToastForMessage(msg as any, senderName);
+                  notifiedMessageIdsRef.current.add((msg as any).id);
+                }
+              }
+            }
+          } catch {
+            // ignore per-discussion errors
+          }
+        }
+      } catch {
+        // ignore outer errors
+      }
+    };
+
+    const interval = setInterval(tick, 12000);
+    // also run once after a small delay to avoid race on mount
+    const init = setTimeout(tick, 800);
+    return () => {
+      cancelled = true;
+      controller.abort();
+      clearInterval(interval);
+      clearTimeout(init);
+    };
+  }, [currentUser?.userId, showToastForMessage]);
 
   useEffect(() => {
     return () => {
@@ -1221,6 +1469,17 @@ const ChatApplication: React.FC = () => {
   
       if (response.ok) {
         const result: MessageResponse = await response.json();
+        // Only show a toast locally if this task message is addressed to the current user (self-message case)
+        if (currentUser && result?.receiverId && Number(result.receiverId) === Number(currentUser.userId)) {
+          const senderLabel = users.find(u => u.userId === result.senderId)?.kullaniciAdi || currentUser?.kullaniciAdi || 'New message';
+          showToastForMessage({
+            ...result,
+            messageType: 4,
+            taskTitle: taskContent,
+            content: taskContent,
+            duration: taskDrawerType === MessageType.Voice ? taskRecordingTime : undefined
+          }, senderLabel);
+        }
         setMessages(prev => sortByCreatedAtAsc([...(prev as Message[]), {
           ...result,
           assignedUserIds: result.assignedUserIds || []
@@ -1606,6 +1865,11 @@ const ChatApplication: React.FC = () => {
                   </div>
                 )}
               </div>
+              <div className="ml-auto flex items-center">
+                <span className="inline-flex items-center justify-center min-w-[24px] h-6 px-2 rounded-full text-xs font-medium bg-blue-100 text-blue-700" title="Number of discussions with this user">
+                  {discussionCounts[user.userId] ?? 0}
+                </span>
+              </div>
             </div>
           </div>
         ))}
@@ -1661,6 +1925,9 @@ const ChatApplication: React.FC = () => {
         ) : (
           discussions.map((discussion) => {
             const isSelected = selectedDiscussion?.id === discussion.id;
+            const unreadCount = unreadCounts[discussion.id] || 0;
+            const unseenCount = unseenCounts[discussion.id] || 0;
+            
             const handleOpenUsersDrawer = async () => {
               setSelectedDiscussionId(discussion.id);
               setShowUsersDrawer(true);
@@ -1705,15 +1972,40 @@ const ChatApplication: React.FC = () => {
                 <div className="p-4 sm:p-5 lg:p-6">
                   <div className="flex items-start justify-between mb-3 sm:mb-4">
                     <div className="flex-1 min-w-0 pr-4">
-                      <h3 className="text-base sm:text-lg lg:text-xl font-semibold text-gray-900 mb-2 line-clamp-2 group-hover:text-blue-600 transition-colors break-words">
-                        {discussion.title}
-                      </h3>
+                      <div className="flex items-start justify-between gap-2">
+                        <h3 className="text-base sm:text-lg lg:text-xl font-semibold text-gray-900 mb-2 line-clamp-2 group-hover:text-blue-600 transition-colors break-words">
+                          {discussion.title}
+                        </h3>
+                        
+                        <div className="flex items-center gap-2 ml-2">
+                          {unreadCount > 0 && (
+                            <span
+                              className="inline-flex items-center justify-center min-w-[22px] h-6 px-2 rounded-full text-xs font-semibold bg-red-500 text-white shadow-sm"
+                              title={`${unreadCount} unread message${unreadCount > 1 ? 's' : ''} (messages you need to read)`}
+                            >
+                              {unreadCount}
+                            </span>
+                          )}
+                          
+                          {unseenCount > 0 && (
+                            <span
+                              className="inline-flex items-center justify-center min-w-[22px] h-6 px-2 rounded-full text-xs font-semibold bg-orange-500 text-white shadow-sm"
+                              title={`${unseenCount} unseen message${unseenCount > 1 ? 's' : ''} (messages you sent that others haven't read)`}
+                            >
+                              <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M18 10c0 3.866-3.582 7-8 7a8.841 8.841 0 01-4.083-.98L2 17l1.338-3.123C2.493 12.767 2 11.434 2 10c0-3.866 3.582-7 8-7s8 3.134 8 7zM7 9H5v2h2V9zm8 0h-2v2h2V9zM9 9h2v2H9V9z" clipRule="evenodd" />
+                              </svg>
+                              {unseenCount}
+                            </span>
+                          )}
+                        </div>
+                      </div>
                       <p className="text-sm sm:text-base text-gray-600 line-clamp-2 sm:line-clamp-3 mb-3 leading-relaxed break-words">
                         {discussion.description}
                       </p>
                     </div>
                   </div>
-          
+
                   <div className="bg-gray-50 rounded-xl p-3 mb-4">
                     <div className="flex flex-col gap-2 text-sm">
                       <div className="flex items-center text-gray-700 min-w-0">
