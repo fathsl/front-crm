@@ -8,11 +8,13 @@ interface Toast {
   content: string;
   createdAt: Date;
   duration?: number;
+  messageId?: number;
 }
 
 interface ToastContextType {
   addToast: (toast: Omit<Toast, 'id'>) => void;
   removeToast: (id: string) => void;
+  removeToastPersist: (id: string, messageId?: number) => void;
 }
 
 const ToastContext = createContext<ToastContextType | undefined>(undefined);
@@ -25,7 +27,7 @@ export const useToast = () => {
   return context;
 };
 
-const ToastNotification: React.FC<{ toast: Toast; onClose: (id: string) => void }> = ({ toast, onClose }) => {
+const ToastNotification: React.FC<{ toast: Toast; onClose: (id: string, messageId?: number) => void }> = ({ toast, onClose }) => {
   const getIcon = () => {
     switch (toast.type) {
       case 'message':
@@ -95,7 +97,7 @@ const ToastNotification: React.FC<{ toast: Toast; onClose: (id: string) => void 
           </div>
         </div>
         <button
-          onClick={() => onClose(toast.id)}
+          onClick={() => onClose(toast.id, toast.messageId)}
           className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors duration-200 group flex-shrink-0"
         >
           <X className="w-4 h-4 text-gray-400 group-hover:text-gray-600 dark:group-hover:text-gray-200" />
@@ -111,7 +113,7 @@ const ToastNotification: React.FC<{ toast: Toast; onClose: (id: string) => void 
             {toast.senderName}
           </h4>
           <p className="text-xs text-gray-500 dark:text-gray-400">
-            sent you a {toast.type === 'task' ? 'task' : 'message'}
+            {toast.senderName} sent you a {toast.type === 'task' ? 'task' : toast.type === 'voice' ? 'voice message' : toast.type === 'file' ? 'file' : 'message'}
           </p>
         </div>
       </div>
@@ -153,7 +155,7 @@ const ToastNotification: React.FC<{ toast: Toast; onClose: (id: string) => void 
   );
 };
 
-const ToastContainer: React.FC<{ toasts: Toast[]; onRemoveToast: (id: string) => void }> = ({ 
+const ToastContainer: React.FC<{ toasts: Toast[]; onRemoveToast: (id: string, messageId?: number) => void }> = ({ 
   toasts, 
   onRemoveToast 
 }) => {
@@ -175,6 +177,32 @@ const ToastContainer: React.FC<{ toasts: Toast[]; onRemoveToast: (id: string) =>
 export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [toasts, setToasts] = useState<Toast[]>([]);
 
+  // Per-day dismissed message IDs persistence
+  const getTodayKey = () => {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `dismissedMessageIds:${y}-${m}-${day}`;
+  };
+  const [todayKey] = useState<string>(getTodayKey());
+  const [dismissedIds, setDismissedIds] = useState<Set<number>>(() => {
+    try {
+      const raw = localStorage.getItem(todayKey);
+      if (!raw) return new Set<number>();
+      const arr = JSON.parse(raw) as number[];
+      return new Set(arr);
+    } catch {
+      return new Set<number>();
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(todayKey, JSON.stringify(Array.from(dismissedIds)));
+    } catch {}
+  }, [dismissedIds, todayKey]);
+
   const addToast = (toastData: Omit<Toast, 'id'>) => {
     const newToast: Toast = {
       ...toastData,
@@ -188,10 +216,17 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setToasts(prev => prev.filter(toast => toast.id !== id));
   };
 
+  const removeToastPersist = (id: string, messageId?: number) => {
+    setToasts(prev => prev.filter(toast => toast.id !== id));
+    if (typeof messageId === 'number') {
+      setDismissedIds(prev => new Set(prev).add(messageId));
+    }
+  };
+
   return (
-    <ToastContext.Provider value={{ addToast, removeToast }}>
+    <ToastContext.Provider value={{ addToast, removeToast, removeToastPersist }}>
       {children}
-      <ToastContainer toasts={toasts} onRemoveToast={removeToast} />
+      <ToastContainer toasts={toasts} onRemoveToast={removeToastPersist} />
       <style>{`
         @keyframes slideIn {
           from {
@@ -217,6 +252,19 @@ export const useMessageToast = (currentUser: any) => {
 
   const showToastForMessage = (message: any, senderName: string) => {
     if (message.receiverId !== currentUser?.userId) return;
+
+    // Skip if dismissed today
+    try {
+      const d = new Date();
+      const key = `dismissedMessageIds:${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      const raw = localStorage.getItem(key);
+      if (raw) {
+        const ids = new Set<number>((JSON.parse(raw) as number[]).filter((n) => typeof n === 'number'));
+        if (typeof message.id === 'number' && ids.has(message.id)) {
+          return;
+        }
+      }
+    } catch {}
 
     let toastType: Toast['type'] = 'message';
     let content = message.content;
@@ -246,7 +294,8 @@ export const useMessageToast = (currentUser: any) => {
       senderName: senderName,
       content: content,
       createdAt: new Date(message.createdAt || new Date()),
-      duration: message.duration
+      duration: message.duration,
+      messageId: typeof message.id === 'number' ? message.id : undefined,
     });
   };
 

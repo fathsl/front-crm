@@ -35,6 +35,26 @@ const resources = {
       "common.cancel": "Cancel",
       "common.delete": "Delete",
       "common.edit": "Edit",
+
+      // Chats / Discussions
+      "chats.newDiscussion.title": "New Discussion",
+      "chats.newDiscussion.discussionTitle": "Discussion title",
+      "chats.newDiscussion.descriptionPlaceholder": "Description (optional)",
+      "chats.newDiscussion.clients": "Clients:",
+      "chats.newDiscussion.selectClientsPlaceholder": "Select clients...",
+      "chats.newDiscussion.searchClientsPlaceholder": "Search clients...",
+      "chats.newDiscussion.selectAll": "Select All",
+      "chats.newDiscussion.clearAll": "Clear All",
+      "chats.newDiscussion.selectClientsHeader": "Select Clients",
+      "chats.newDiscussion.noClientsFound": "No clients found for \"{{term}}\"",
+      "chats.newDiscussion.noClientsAvailable": "No clients available",
+      "chats.newDiscussion.status": "Discussion Status",
+      "chats.newDiscussion.status.notStarted": "Not Started",
+      "chats.newDiscussion.status.inProgress": "In Progress",
+      "chats.newDiscussion.status.completed": "Completed",
+      "chats.newDiscussion.create": "Create Discussion",
+      "chats.newDiscussion.creating": "Creating...",
+      "chats.newDiscussion.cancel": "Cancel",
     }
   },
   tr: {
@@ -68,6 +88,26 @@ const resources = {
       "common.cancel": "İptal",
       "common.delete": "Sil",
       "common.edit": "Düzenle",
+
+      // Chats / Discussions
+      "chats.newDiscussion.title": "Yeni Görüşme",
+      "chats.newDiscussion.discussionTitle": "Görüşme başlığı",
+      "chats.newDiscussion.descriptionPlaceholder": "Açıklama (opsiyonel)",
+      "chats.newDiscussion.clients": "Müşteriler:",
+      "chats.newDiscussion.selectClientsPlaceholder": "Müşteri seçin...",
+      "chats.newDiscussion.searchClientsPlaceholder": "Müşteri ara...",
+      "chats.newDiscussion.selectAll": "Tümünü Seç",
+      "chats.newDiscussion.clearAll": "Temizle",
+      "chats.newDiscussion.selectClientsHeader": "Müşteri Seçin",
+      "chats.newDiscussion.noClientsFound": "\"{{term}}\" için müşteri bulunamadı",
+      "chats.newDiscussion.noClientsAvailable": "Müşteri bulunmuyor",
+      "chats.newDiscussion.status": "Görüşme Durumu",
+      "chats.newDiscussion.status.notStarted": "Başlamadı",
+      "chats.newDiscussion.status.inProgress": "Devam Ediyor",
+      "chats.newDiscussion.status.completed": "Tamamlandı",
+      "chats.newDiscussion.create": "Görüşme Oluştur",
+      "chats.newDiscussion.creating": "Oluşturuluyor...",
+      "chats.newDiscussion.cancel": "İptal",
     }
   }
 };

@@ -1,6 +1,7 @@
 import { useAtomValue } from "jotai";
-import { AlertCircle, ArrowLeft, CheckCircle, Clock, DownloadIcon, Edit3, ExternalLink, EyeIcon, FileIcon, FileText, Hourglass, ListChecksIcon, MessageSquare, Mic, MoreVertical, Paperclip, Pause, Play, Plus, Search, Send, Share, Square, Trash2, Users, UsersIcon, Volume2, X, XCircle } from "lucide-react";
+import { AlertCircle, ArrowLeft, Check, CheckCircle, Clock, DownloadIcon, Edit3, ExternalLink, EyeIcon, FileIcon, FileText, Hourglass, ListChecksIcon, MessageSquare, Mic, MoreVertical, Paperclip, Pause, Play, Plus, Search, Send, Share, Square, Trash2, Users, UsersIcon, Volume2, X, XCircle } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"; 
+import { useTranslation } from 'react-i18next';
 import { formatFileSize, type SendMessageRequest, type User } from "~/help";
 import { DiscussionStatus, type Client, type CreateDiscussionRequest, type Project } from "~/help";
 import type { Discussion } from "~/help";
@@ -86,6 +87,7 @@ export interface UpdateDiscussionStatusRequest {
 }
 
 const ChatApplication: React.FC = () => {
+  const { t } = useTranslation();
   const [users, setUsers] = useState<User[]>([]);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [discussions, setDiscussions] = useState<DiscussionWithLastTask[]>([]);
@@ -389,11 +391,10 @@ const ChatApplication: React.FC = () => {
 
   const fetchDiscussions = useCallback(async (currentUserId: number, selectedUserId?: number) => {
     if (!currentUserId) return;
-
     setLoading(true);
     try {
         let url = `${baseUrl}/api/Chat/discussions/${currentUserId}`;
-        
+       
         if (selectedUserId !== undefined) {
             if (isAdmin) {
                 url = `${baseUrl}/api/Chat/discussions/admin/${currentUserId}/${selectedUserId}`;
@@ -401,42 +402,68 @@ const ChatApplication: React.FC = () => {
                 url = `${baseUrl}/api/Chat/discussions/${currentUserId}/${selectedUserId}`;
             }
         }
-
         const response = await fetch(url);
         if (response.ok) {
             const data: Discussion[] = await response.json();
             const uniqueDiscussions = data.filter((discussion: Discussion, index: number, self: Discussion[]) =>
                 index === self.findIndex((d: Discussion) => d.id === discussion.id)
             );
-
+            
             try {
               const tuples = await Promise.all(
                 uniqueDiscussions.map(async (d) => {
                   try {
                     const resp = await fetch(`${baseUrl}/api/Chat/discussions/${d.id}/messages?userId=${currentUser?.userId || 0}`);
-                    if (!resp.ok) return [d.id, 0, 0] as const;
+                    if (!resp.ok) return [d.id, 0, 0, null] as const;
                     const payload = await resp.json();
                     const unread = Number(payload?.unreadCount) || 0;
                     const unseen = Number(payload?.unseenCount) || 0;
-                    return [d.id, unread, unseen] as const;
+                    
+                    let latestMessageDate = null;
+                    if (payload?.messages && Array.isArray(payload.messages) && payload.messages.length > 0) {
+                      const sortedMessages = payload.messages.sort((a: any, b: any) => 
+                        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+                      );
+                      latestMessageDate = sortedMessages[0].createdAt;
+                    }
+                    
+                    return [d.id, unread, unseen, latestMessageDate] as const;
                   } catch {
-                    return [d.id, 0, 0] as const;
+                    return [d.id, 0, 0, null] as const;
                   }
                 })
               );
-
+              
               const unreadMap: Record<number, number> = {};
               const unseenMap: Record<number, number> = {};
-              for (const [id, unread, unseen] of tuples) {
+              const latestMessageMap: Record<number, string | null> = {};
+              
+              for (const [id, unread, unseen, latestMessage] of tuples) {
                 unreadMap[id] = unread;
                 unseenMap[id] = unseen;
+                latestMessageMap[id] = latestMessage;
               }
-
-              setDiscussions(uniqueDiscussions.map((d) => ({ ...d, unreadCount: unreadMap[d.id] ?? 0 })) as any);
+              
+              const sortedDiscussions = uniqueDiscussions
+                .map((d) => ({ 
+                  ...d, 
+                  unreadCount: unreadMap[d.id] ?? 0,
+                  latestMessageDate: latestMessageMap[d.id]
+                }))
+                .sort((a, b) => {
+                  const dateA = a.latestMessageDate ? new Date(a.latestMessageDate).getTime() : new Date(a.createdAt).getTime();
+                  const dateB = b.latestMessageDate ? new Date(b.latestMessageDate).getTime() : new Date(b.createdAt).getTime();
+                  return dateB - dateA;
+                });
+              
+              setDiscussions(sortedDiscussions as any);
               setUnreadCounts((prev) => ({ ...prev, ...unreadMap }));
               setUnseenCounts((prev) => ({ ...prev, ...unseenMap }));
             } catch {
-              setDiscussions(uniqueDiscussions as any);
+              const fallbackSorted = uniqueDiscussions.sort((a, b) => 
+                new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+              );
+              setDiscussions(fallbackSorted as any);
             }
         } else {
             throw new Error('Failed to fetch discussions');
@@ -446,7 +473,7 @@ const ChatApplication: React.FC = () => {
     } finally {
         setLoading(false);
     }
-  }, [isAdmin, fetchAssignedUsers, updateUnreadCount, currentUser?.userId]);
+}, [isAdmin, fetchAssignedUsers, updateUnreadCount, currentUser?.userId]);
 
   const fetchMessages = useCallback(async (discussionId: number) => {
     if (!currentUser) return;
@@ -464,25 +491,6 @@ const ChatApplication: React.FC = () => {
             
             setUnreadCounts(prev => ({ ...prev, [discussionId]: unreadCount }));
             setUnseenCounts(prev => ({ ...prev, [discussionId]: unseenCount }));
-
-            // Show toasts for new incoming messages for the current receiver
-            try {
-              const currentId = currentUser?.userId;
-              if (currentId) {
-                for (const msg of sorted as Message[]) {
-                  if (!msg || typeof msg.id !== 'number') continue;
-                  if (notifiedMessageIdsRef.current.has(msg.id)) continue;
-                  // Only toast for messages addressed to current user and not seen
-                  if (msg.receiverId === currentId && (msg as any).isSeen === false) {
-                    const senderName = (msg as any).senderName || selectedUser?.kullaniciAdi || 'New message';
-                    showToastForMessage(msg as any, senderName);
-                    notifiedMessageIdsRef.current.add(msg.id);
-                  }
-                }
-              }
-            } catch (e) {
-              console.error('Toast processing error:', e);
-            }
         } else {
             console.error('Failed to fetch messages');
         }
@@ -594,7 +602,7 @@ const ChatApplication: React.FC = () => {
 
   const assignUsersToDiscussion = async (discussionId: number, userIds: number[]) => {
     if (!currentUser || userIds.length === 0) return;
-  
+ 
     setIsAssigning(true);
     try {
       const request: AssignDiscussionRequest = {
@@ -602,7 +610,6 @@ const ChatApplication: React.FC = () => {
         userIds,
         assignedByUserId: currentUser.userId
       };
-
       const response = await fetch(`${baseUrl}/api/Chat/discussions/assign`, {
         method: 'POST',
         headers: {
@@ -610,23 +617,21 @@ const ChatApplication: React.FC = () => {
         },
         body: JSON.stringify(request)
       });
-
       if (response.ok) {
         const result: AssignmentResponse = await response.json();
-        
+       
         if (result.totalAssigned > 0) {
           console.log(`Successfully assigned ${result.totalAssigned} users to the discussion`);
         }
-        
+       
         if (result.totalSkipped > 0) {
           console.log(`${result.totalSkipped} users were already assigned to this discussion`);
         }
-
         setSelectedUsers(new Set());
         handleCloseUsersDrawer();
-        
+       
         await fetchDiscussions(currentUser.userId, selectedUser?.userId);
-        
+       
       } else if (response.status === 403) {
         console.error('You don\'t have permission to assign users to this discussion');
       } else {
@@ -639,12 +644,18 @@ const ChatApplication: React.FC = () => {
     }
   };
 
+  const refreshDiscussionsAfterMessage = useCallback(async () => {
+    if (currentUser?.userId) {
+        await fetchDiscussions(currentUser.userId, selectedUser?.userId);
+    }
+}, [currentUser?.userId, selectedUser?.userId, fetchDiscussions]);
+
   const handleAssignClick = () => {
     if (selectedDiscussionId && selectedUsers.size > 0) {
       assignUsersToDiscussion(selectedDiscussionId, Array.from(selectedUsers));
     }
   };
-  
+
   const filteredTaskClients = clients.filter(client =>
     `${client.first_name} ${client.last_name}`.toLowerCase().includes(clientSearchTerm.toLowerCase()) ||
     (client.email && client.email.toLowerCase().includes(clientSearchTerm.toLowerCase()))
@@ -767,7 +778,7 @@ const ChatApplication: React.FC = () => {
       receiverId: selectedUser?.userId || 0,
       content: newMessage,
       messageType: 1
-    };
+    };    
   
     try {
       const response = await fetch(`${baseUrl}/api/Chat/messages`, {
@@ -789,6 +800,7 @@ const ChatApplication: React.FC = () => {
             createdAt: new Date()
           }, senderLabel);
         }
+        refreshDiscussionsAfterMessage();
         setNewMessage('');
         await fetchMessages(selectedDiscussion.id);
       }
@@ -982,32 +994,28 @@ const ChatApplication: React.FC = () => {
         await fetchMessages(discussion.id);
 
         if (currentUser?.userId) {
-            const isReceiver = discussion.receiverId === currentUser.userId;
-            
-            if (isReceiver) {
-                await markDiscussionMessagesAsSeen(discussion.id, currentUser.userId);
-                
-                setMessages(prev =>
-                    prev.map(msg => {
-                        if (msg.receiverId === currentUser.userId && !msg.isSeen) {
-                            return {
-                                ...msg,
-                                isSeen: true,
-                                seenAt: new Date()
-                            };
-                        }
-                        return msg;
-                    })
-                );
+            await markDiscussionMessagesAsSeen(discussion.id, currentUser.userId);
 
-                setDiscussions(prevDiscussions => 
-                    prevDiscussions.map(disc => 
-                        disc.id === discussion.id 
-                            ? { ...disc, unreadCount: 0 }
-                            : disc
-                    )
-                );
-            }
+            setMessages(prev =>
+                prev.map(msg => {
+                    if (msg.receiverId === currentUser.userId && !msg.isSeen) {
+                        return {
+                            ...msg,
+                            isSeen: true,
+                            seenAt: new Date()
+                        } as any;
+                    }
+                    return msg;
+                })
+            );
+
+            setDiscussions(prevDiscussions => 
+                prevDiscussions.map(disc => 
+                    disc.id === discussion.id 
+                        ? { ...disc, unreadCount: 0 }
+                        : disc
+                )
+            );
         }
     } catch (error) {
         console.error('Error in handleDiscussionSelect:', error);
@@ -1141,7 +1149,6 @@ const ChatApplication: React.FC = () => {
             mimeType: result.mimeType
         };
       
-      // Only show a toast locally if this voice message is addressed to the current user (self-message case)
       if (currentUser && newVoiceMessage.receiverId && Number(newVoiceMessage.receiverId) === Number(currentUser.userId)) {
           const senderLabel = users.find(u => u.userId === newVoiceMessage.senderId)?.kullaniciAdi || currentUser.kullaniciAdi;
           showToastForMessage({
@@ -1150,6 +1157,7 @@ const ChatApplication: React.FC = () => {
             duration: recordingTime
           }, senderLabel);
       }
+      refreshDiscussionsAfterMessage();
       setMessages(prev => sortByCreatedAtAsc([...(prev as Message[]), newVoiceMessage]));
       setAudioBlob(null);
       setRecordingTime(0);
@@ -1323,18 +1331,23 @@ const ChatApplication: React.FC = () => {
               if (!mResp.ok) continue;
               const payload = await mResp.json();
               const arr: Message[] = Array.isArray(payload?.messages) ? payload.messages : (Array.isArray(payload) ? payload : []);
-              const sorted = sortByCreatedAtAsc(arr);
-              for (const msg of sorted) {
-                if (!msg || typeof (msg as any).id !== 'number') continue;
-                if (notifiedMessageIdsRef.current.has((msg as any).id)) continue;
-                if ((msg as any).receiverId === currentUser.userId && (msg as any).isSeen === false) {
-                  const senderName = (msg as any).senderName || 'New message';
-                  showToastForMessage(msg as any, senderName);
-                  notifiedMessageIdsRef.current.add((msg as any).id);
+              const sortedMsgs = sortByCreatedAtAsc(arr);
+              for (const msg of sortedMsgs) {
+                if (!msg || typeof msg.id !== 'number') continue;
+                if (notifiedMessageIdsRef.current.has(msg.id)) continue;
+                if (msg.receiverId === currentUser.userId && msg.isSeen === false) {
+                  const senderName = String(
+                    users.find(u => u.userId === msg.senderId)?.kullaniciAdi
+                    || (msg as any).senderName
+                    || 'New message'
+                  ) as string;
+                  showToastForMessage(msg, senderName);
+                  notifiedMessageIdsRef.current.add(msg.id);
                 }
               }
             }
           } catch {
+            console.error('Error fetching messages for discussion:', d.id);
           }
         }
       } catch {
@@ -1482,7 +1495,6 @@ const ChatApplication: React.FC = () => {
   
       if (response.ok) {
         const result: MessageResponse = await response.json();
-        // Only show a toast locally if this task message is addressed to the current user (self-message case)
         if (currentUser && result?.receiverId && Number(result.receiverId) === Number(currentUser.userId)) {
           const senderLabel = users.find(u => u.userId === result.senderId)?.kullaniciAdi || currentUser?.kullaniciAdi || 'New message';
           showToastForMessage({
@@ -1493,6 +1505,7 @@ const ChatApplication: React.FC = () => {
             duration: taskDrawerType === MessageType.Voice ? taskRecordingTime : undefined
           }, senderLabel);
         }
+        refreshDiscussionsAfterMessage();
         setMessages(prev => sortByCreatedAtAsc([...(prev as Message[]), {
           ...result,
           assignedUserIds: result.assignedUserIds || []
@@ -2410,6 +2423,34 @@ const ChatApplication: React.FC = () => {
                     try { return raw ? new Date(raw).toLocaleString() : ''; } catch { return ''; }
                   })()}
                 </div>
+                <div className="mt-1 text-xs">
+                  {(() => {
+                    const isSeen = (message as any).isSeen === true;
+                    const seenAt = (message as any).seenAt;
+                    const checks = (
+                      <div className="mt-1 text-xs flex items-center space-x-1">
+                      <span className={isSeen ? 'text-blue-500' : 'text-gray-400'}>
+                        <Check size={12} className="inline mr-0.5 align-text-bottom" />
+                        <Check size={12} className="inline align-text-bottom" />
+                      </span>
+                    </div>
+                    );
+                    if (isSeen && seenAt) {
+                      try {
+                        const when = new Date(seenAt).toLocaleString();
+                        return (
+                          <div className="flex items-center space-x-1">
+                            {checks}
+                            <span className="text-blue-500">Seen {when}</span>
+                          </div>
+                        );
+                      } catch {
+                        return <div className="flex items-center">{checks}<span className="ml-1 text-blue-500">Seen</span></div>;
+                      }
+                    }
+                    return <div className="flex items-center">{checks}<span className="ml-1 text-gray-500">Unseen</span></div>;
+                  })()}
+                </div>
                 {message.senderId === currentUser?.userId && (message.messageType === 1 || message.messageType === 4) && (
                     <div className="flex space-x-2 mt-2 text-xs opacity-75">
                       <button
@@ -2614,24 +2655,24 @@ const ChatApplication: React.FC = () => {
     {showCreateDiscussion && (
       <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
         <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl">
-          <h3 className="text-xl font-bold mb-6 text-slate-800">New Discussion</h3>
+          <h3 className="text-xl font-bold mb-6 text-slate-800">{t('chats.newDiscussion.title')}</h3>
           <div className="space-y-4">
             <input
               type="text"
               value={newDiscussionTitle}
               onChange={(e) => setNewDiscussionTitle(e.target.value)}
               className="w-full p-4 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-              placeholder="Discussion title"
+              placeholder={t('chats.newDiscussion.discussionTitle')}
             />
             <textarea
               value={newDiscussionDescription}
               onChange={(e) => setNewDiscussionDescription(e.target.value)}
               className="w-full p-4 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
               rows={3}
-              placeholder="Description (optional)"
+              placeholder={t('chats.newDiscussion.descriptionPlaceholder')}
             />
 
-            <div className="text-sm font-medium text-slate-700">Clients:</div>
+            <div className="text-sm font-medium text-slate-700">{t('chats.newDiscussion.clients')}</div>
               <div className="relative">
                 <div
                   onClick={() => setIsClientDropdownOpen(!isClientDropdownOpen)}
@@ -2639,7 +2680,7 @@ const ChatApplication: React.FC = () => {
                     >
                       <div className="flex-1 flex flex-wrap gap-2">
                           {selectedClients.length === 0 ? (
-                            <span className="text-slate-500 text-sm">Select clients...</span>
+                            <span className="text-slate-500 text-sm">{t('chats.newDiscussion.selectClientsPlaceholder')}</span>
                           ) : (
                             selectedClients.map(client => (
                               <span
@@ -2673,14 +2714,14 @@ const ChatApplication: React.FC = () => {
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                         </svg>
                       </div>
-                      
+
                       {isClientDropdownOpen && (
                         <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-300 rounded-lg shadow-lg z-50 max-h-60 overflow-hidden">
                           <div className="p-3">
                             <div className="relative mb-3">
                               <input
                                 type="text"
-                                placeholder="Search clients..."
+                                placeholder={t('chats.newDiscussion.searchClientsPlaceholder')}
                                 value={clientSearchTerm}
                                 onChange={(e) => setClientSearchTerm(e.target.value)}
                                 className="w-full pl-9 pr-4 py-2 text-sm border border-slate-300 rounded-md focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all"
@@ -2705,9 +2746,9 @@ const ChatApplication: React.FC = () => {
                                 </button>
                               )}
                             </div>
-                            
+
                             <div className="flex items-center justify-between mb-2 pb-2 border-b border-slate-200">
-                              <span className="text-sm font-medium text-slate-700">Select Clients</span>
+                              <span className="text-sm font-medium text-slate-700">{t('chats.newDiscussion.selectClientsHeader')}</span>
                               <div className="flex gap-2">
                                 {filteredClients.length > 0 && (
                                   <button
@@ -2719,14 +2760,14 @@ const ChatApplication: React.FC = () => {
                                     }}
                                     className="text-xs text-blue-600 hover:text-blue-800 px-2 py-1 hover:bg-blue-50 rounded font-medium"
                                   >
-                                    Select All
+                                    {t('chats.newDiscussion.selectAll')}
                                   </button>
                                 )}
                                 <button
                                   onClick={() => setSelectedClients([])}
                                   className="text-xs text-slate-500 hover:text-slate-700 px-2 py-1 hover:bg-slate-100 rounded"
                                 >
-                                  Clear All
+                                  {t('chats.newDiscussion.clearAll')}
                                 </button>
                               </div>
                             </div>
@@ -2782,7 +2823,7 @@ const ChatApplication: React.FC = () => {
                                 <svg className="w-8 h-8 mx-auto mb-2 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                                 </svg>
-                                No clients found for "{clientSearchTerm}"
+                                {t('chats.newDiscussion.noClientsFound', { term: clientSearchTerm })}
                               </div>
                             )}
                             
@@ -2791,7 +2832,7 @@ const ChatApplication: React.FC = () => {
                                 <svg className="w-8 h-8 mx-auto mb-2 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                                 </svg>
-                                No clients available
+                                {t('chats.newDiscussion.noClientsAvailable')}
                               </div>
                             )}
                           </div>
@@ -2800,16 +2841,16 @@ const ChatApplication: React.FC = () => {
               </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Discussion Status
+                {t('chats.newDiscussion.status')}
               </label>
               <select
                 value={newDiscussionStatus}
                 onChange={(e) => setNewDiscussionStatus(Number(e.target.value) as DiscussionStatus)}
                 className="w-full p-4 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
               >
-                <option value={DiscussionStatus.NotStarted}>Not Started</option>
-                <option value={DiscussionStatus.InProgress}>In Progress</option>
-                <option value={DiscussionStatus.Completed}>Completed</option>
+                <option value={DiscussionStatus.NotStarted}>{t('chats.newDiscussion.status.notStarted')}</option>
+                <option value={DiscussionStatus.InProgress}>{t('chats.newDiscussion.status.inProgress')}</option>
+                <option value={DiscussionStatus.Completed}>{t('chats.newDiscussion.status.completed')}</option>
               </select>
             </div>
           </div>
@@ -2817,9 +2858,9 @@ const ChatApplication: React.FC = () => {
           <div className="flex space-x-3 mt-6">
             <button
               onClick={createDiscussion}
-              disabled={!newDiscussionTitle.trim() || isCreatingDiscussion}
+              disabled={isCreatingDiscussion}
               className={`px-4 py-2 rounded-lg text-white font-medium transition-colors ${
-                isCreatingDiscussion || !newDiscussionTitle.trim()
+                isCreatingDiscussion
                   ? 'bg-gray-400 cursor-not-allowed'
                   : 'bg-blue-500 hover:bg-blue-600'
               }`}
@@ -2827,10 +2868,10 @@ const ChatApplication: React.FC = () => {
               {isCreatingDiscussion ? (
                 <div className="flex items-center gap-2">
                   <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                  Creating...
+                  {t('chats.newDiscussion.creating')}
                 </div>
               ) : (
-                'Create Discussion'
+                t('chats.newDiscussion.create')
               )}
             </button>
             <button
@@ -2840,7 +2881,7 @@ const ChatApplication: React.FC = () => {
               }}
               className="flex-1 bg-slate-100 text-slate-700 py-3 rounded-xl hover:bg-slate-200 transition font-medium"
             >
-              Cancel
+              {t('chats.newDiscussion.cancel')}
             </button>
           </div>
         </div>
@@ -2974,7 +3015,7 @@ const ChatApplication: React.FC = () => {
                           </div>
                           
                           <div className="flex items-center justify-between mb-2 pb-2 border-b border-slate-200">
-                            <span className="text-sm font-medium text-slate-700">Select Clients</span>
+                            <span className="text-sm font-medium text-slate-700">{t('chats.newDiscussion.selectClientsHeader')}</span>
                             <div className="flex gap-2">
                               {filteredClients.length > 0 && (
                                 <button
@@ -2986,14 +3027,14 @@ const ChatApplication: React.FC = () => {
                                   }}
                                   className="text-xs text-blue-600 hover:text-blue-800 px-2 py-1 hover:bg-blue-50 rounded font-medium"
                                 >
-                                  Select All
+                                  {t('chats.newDiscussion.selectAll')}
                                 </button>
                               )}
                               <button
                                 onClick={() => setSelectedClients([])}
                                 className="text-xs text-slate-500 hover:text-slate-700 px-2 py-1 hover:bg-slate-100 rounded"
                               >
-                                Clear All
+                                {t('chats.newDiscussion.clearAll')}
                               </button>
                             </div>
                           </div>
@@ -3123,7 +3164,7 @@ const ChatApplication: React.FC = () => {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                       </svg>
                     </div>
-                    
+
                     {isProjectDropdownOpen && (
                       <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-300 rounded-lg shadow-lg z-50 max-h-60 overflow-hidden">
                         <div className="p-3">
