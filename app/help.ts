@@ -300,6 +300,8 @@ export interface CreateDiscussionRequest {
     participantUserIds: number[];
     senderId: number;
     receiverId: number;
+    clientId: number;
+    clientIds?: number[];
     status: DiscussionStatus;
 }
 

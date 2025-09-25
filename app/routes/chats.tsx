@@ -123,6 +123,7 @@ const ChatApplication: React.FC = () => {
   const [taskRecording, setTaskRecording] = useState(false);
   const [taskRecordingTime, setTaskRecordingTime] = useState(0);
   const [selectedClients, setSelectedClients] = useState<Client[]>([]);
+  const [filteredClients, setFilteredClients] = useState<Client[]>([]);
   const [selectedProjects, setSelectedProjects] = useState<Project[]>([]);
   const [isCreatingDiscussion, setIsCreatingDiscussion] = useState(false);
   const [isClientDropdownOpen, setIsClientDropdownOpen] = useState(false);
@@ -140,6 +141,7 @@ const ChatApplication: React.FC = () => {
   const [discussionCounts, setDiscussionCounts] = useState<{ [userId: number]: number }>({});  
   const [unseenCounts, setUnseenCounts] = useState<Record<number, number>>({});
   const [unreadCounts, setUnreadCounts] = useState<Record<number, number>>({});
+  const [selectedClientId, setSelectedClientId] = useState<number | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const { showToastForMessage } = useMessageToast(currentUser);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -156,6 +158,12 @@ const ChatApplication: React.FC = () => {
   const navigate = useNavigate();
   const baseUrl = "https://api-crm-tegd.onrender.com";
   const isAdmin = currentUser?.role === "Yonetici"
+
+  const filterByRole = (list: Client[]) => {
+      if (isAdmin) return list;
+      const uid = currentUser?.userId ?? -1;
+      return list.filter(c => c.createdBy === uid);
+    };
 
   const sortByCreatedAtAsc = (arr: Message[]) => {
     const toTime = (m: any) => {
@@ -287,21 +295,23 @@ const ChatApplication: React.FC = () => {
   };
 
   const fetchClients = async () => {
-      try {
-        setLoading(true);
-        const response = await fetch(`${baseUrl}/api/Clients`);
-        if (response.ok) {
-          const data = await response.json();
-          setClients(data);
-        } else {
-          throw new Error('Failed to fetch clients');
-        }
-      } catch (err) {
-        setError('Kullanıcılar yüklenirken hata oluştu');
-        console.error('Error fetching clients:', err);
-      } finally {
-        setLoading(false);
+    try {
+      setLoading(true);
+      const response = await fetch(`${baseUrl}/api/Clients`);
+      if (response.ok) {
+        const data = await response.json();
+        setClients(data);
+        const visible = filterByRole(data);
+        setFilteredClients(visible);
+      } else {
+        throw new Error('Failed to fetch clients');
       }
+    } catch (err) {
+      setError('Kullanıcılar yüklenirken hata oluştu');
+      console.error('Error fetching clients:', err);
+    } finally {
+      setLoading(false);
+    }
   };
   
   const fetchProjects = async () => {
@@ -322,6 +332,15 @@ const ChatApplication: React.FC = () => {
     fetchUsers();
     fetchClients();
   }, []);
+
+  useEffect(() => {
+    const base = filterByRole(clients);
+    const searched = base.filter(client =>
+      `${client.first_name} ${client.last_name}`.toLowerCase().includes(clientSearchTerm.toLowerCase()) ||
+      (client.email && client.email.toLowerCase().includes(clientSearchTerm.toLowerCase()))
+    );
+    setFilteredClients(searched);
+  }, [clients, clientSearchTerm, currentUser?.userId, isAdmin]);
 
   const updateUnreadCount = useCallback(async (discussionId: number) => {
     try {
@@ -390,7 +409,6 @@ const ChatApplication: React.FC = () => {
                 index === self.findIndex((d: Discussion) => d.id === discussion.id)
             );
 
-            // Fetch per-discussion counts via messages endpoint (unreadCount, unseenCount) in one batch
             try {
               const tuples = await Promise.all(
                 uniqueDiscussions.map(async (d) => {
@@ -407,7 +425,6 @@ const ChatApplication: React.FC = () => {
                 })
               );
 
-              // Build maps and set state once
               const unreadMap: Record<number, number> = {};
               const unseenMap: Record<number, number> = {};
               for (const [id, unread, unseen] of tuples) {
@@ -486,6 +503,8 @@ const ChatApplication: React.FC = () => {
       participantUserIds: [currentUser?.userId || 0, selectedUser.userId],
       senderId: currentUser?.userId || 0,
       receiverId: selectedUser.userId,
+      clientId: (selectedClients[0]?.id) ?? (selectedClientId || 0),
+      clientIds: selectedClients.map(c => c.id),
       status: newDiscussionStatus
     };
   
@@ -504,6 +523,9 @@ const ChatApplication: React.FC = () => {
         setNewDiscussionTitle('');
         setNewDiscussionDescription('');
         setShowCreateDiscussion(false);
+        setSelectedClientId(0);
+        setSelectedClients([]);
+        setIsClientDropdownOpen(false);
         setSelectedDiscussion(newDiscussion);
       } else {
         throw new Error('Failed to create discussion');
@@ -623,7 +645,7 @@ const ChatApplication: React.FC = () => {
     }
   };
   
-  const filteredClients = clients.filter(client =>
+  const filteredTaskClients = clients.filter(client =>
     `${client.first_name} ${client.last_name}`.toLowerCase().includes(clientSearchTerm.toLowerCase()) ||
     (client.email && client.email.toLowerCase().includes(clientSearchTerm.toLowerCase()))
   );
@@ -758,7 +780,6 @@ const ChatApplication: React.FC = () => {
   
       if (response.ok) {
         const result = await response.json();
-        // Only show a toast locally if this message is addressed to the current user (self-message case)
         if (currentUser && result?.receiverId && Number(result.receiverId) === Number(currentUser.userId)) {
           const senderLabel = users.find(u => u.userId === result.senderId)?.kullaniciAdi || currentUser.kullaniciAdi;
           showToastForMessage({
@@ -1272,8 +1293,6 @@ const ChatApplication: React.FC = () => {
     return () => clearInterval(interval);
   }, [selectedDiscussion, fetchMessages]);
 
-  // Background polling to show toasts for new unseen messages for the current user
-  // Runs at a gentle cadence and only when a user is logged in
   useEffect(() => {
     if (!currentUser?.userId) return;
 
@@ -1282,7 +1301,6 @@ const ChatApplication: React.FC = () => {
 
     const tick = async () => {
       try {
-        // Fetch all discussions for currentUser only (no selectedUser filter)
         const resp = await fetch(`${baseUrl}/api/Chat/discussions/${currentUser.userId}`, { signal: controller.signal });
         if (!resp.ok) return;
         const data: Discussion[] = await resp.json();
@@ -1290,7 +1308,6 @@ const ChatApplication: React.FC = () => {
           ? data.filter((d, i, self) => i === self.findIndex(x => x.id === d.id))
           : [];
 
-        // Limit to first 12 discussions to keep it light
         const slice = unique.slice(0, 12);
         for (const d of slice) {
           if (cancelled) break;
@@ -1301,7 +1318,6 @@ const ChatApplication: React.FC = () => {
             const prev = lastUnreadCountsRef.current.get(d.id) || 0;
             lastUnreadCountsRef.current.set(d.id, unread);
 
-            // If unread increased, fetch messages to identify the new unseen ones and toast them
             if (unread > prev) {
               const mResp = await fetch(`${baseUrl}/api/Chat/discussions/${d.id}/messages?userId=${currentUser.userId}`, { signal: controller.signal });
               if (!mResp.ok) continue;
@@ -1319,16 +1335,13 @@ const ChatApplication: React.FC = () => {
               }
             }
           } catch {
-            // ignore per-discussion errors
           }
         }
       } catch {
-        // ignore outer errors
       }
     };
 
     const interval = setInterval(tick, 12000);
-    // also run once after a small delay to avoid race on mount
     const init = setTimeout(tick, 800);
     return () => {
       cancelled = true;
@@ -2617,7 +2630,174 @@ const ChatApplication: React.FC = () => {
               rows={3}
               placeholder="Description (optional)"
             />
-            
+
+            <div className="text-sm font-medium text-slate-700">Clients:</div>
+              <div className="relative">
+                <div
+                  onClick={() => setIsClientDropdownOpen(!isClientDropdownOpen)}
+                  className="min-h-[42px] w-full border border-slate-300 rounded-lg px-3 py-2 bg-white cursor-pointer hover:border-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all duration-200 flex items-center justify-between"
+                    >
+                      <div className="flex-1 flex flex-wrap gap-2">
+                          {selectedClients.length === 0 ? (
+                            <span className="text-slate-500 text-sm">Select clients...</span>
+                          ) : (
+                            selectedClients.map(client => (
+                              <span
+                                key={client.id}
+                                className="inline-flex items-center gap-1 bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full"
+                              >
+                                {client.first_name} {client.last_name}
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedClients(prev => prev.filter(c => c.id !== client.id));
+                                  }}
+                                  className="hover:bg-blue-200 rounded-full p-0.5 transition-colors"
+                                >
+                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                  </svg>
+                                </button>
+                              </span>
+                            ))
+                          )}
+                        </div>
+                        <svg
+                          className={`w-5 h-5 text-slate-400 transition-transform duration-200 ${
+                            isClientDropdownOpen ? 'rotate-180' : ''
+                          }`}
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </div>
+                      
+                      {isClientDropdownOpen && (
+                        <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-300 rounded-lg shadow-lg z-50 max-h-60 overflow-hidden">
+                          <div className="p-3">
+                            <div className="relative mb-3">
+                              <input
+                                type="text"
+                                placeholder="Search clients..."
+                                value={clientSearchTerm}
+                                onChange={(e) => setClientSearchTerm(e.target.value)}
+                                className="w-full pl-9 pr-4 py-2 text-sm border border-slate-300 rounded-md focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all"
+                                autoFocus
+                              />
+                              <svg
+                                className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                              </svg>
+                              {clientSearchTerm && (
+                                <button
+                                  onClick={() => setClientSearchTerm('')}
+                                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                                >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                  </svg>
+                                </button>
+                              )}
+                            </div>
+                            
+                            <div className="flex items-center justify-between mb-2 pb-2 border-b border-slate-200">
+                              <span className="text-sm font-medium text-slate-700">Select Clients</span>
+                              <div className="flex gap-2">
+                                {filteredClients.length > 0 && (
+                                  <button
+                                    onClick={() => {
+                                      const newClients = filteredClients.filter(client =>
+                                        !selectedClients.some(selected => selected.id === client.id)
+                                      );
+                                      setSelectedClients(prev => [...prev, ...newClients]);
+                                    }}
+                                    className="text-xs text-blue-600 hover:text-blue-800 px-2 py-1 hover:bg-blue-50 rounded font-medium"
+                                  >
+                                    Select All
+                                  </button>
+                                )}
+                                <button
+                                  onClick={() => setSelectedClients([])}
+                                  className="text-xs text-slate-500 hover:text-slate-700 px-2 py-1 hover:bg-slate-100 rounded"
+                                >
+                                  Clear All
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                          
+                          <div className="max-h-40 overflow-y-auto px-3 pb-3">
+                            {filteredClients.map(client => {
+                              const isSelected = selectedClients.some(c => c.id === client.id);
+                              return (
+                                <div
+                                  key={client.id}
+                                  onClick={() => {
+                                    if (isSelected) {
+                                      setSelectedClients(prev => prev.filter(c => c.id !== client.id));
+                                    } else {
+                                      setSelectedClients(prev => [...prev, client]);
+                                    }
+                                  }}
+                                  className={`flex items-center gap-3 p-2 rounded-md cursor-pointer transition-colors ${
+                                    isSelected
+                                      ? 'bg-blue-50 text-blue-900'
+                                      : 'hover:bg-slate-50 text-slate-700'
+                                  }`}
+                                >
+                                  <div className={`w-4 h-4 border-2 rounded flex items-center justify-center ${
+                                    isSelected
+                                      ? 'bg-blue-500 border-blue-500'
+                                      : 'border-slate-300'
+                                  }`}>
+                                    {isSelected && (
+                                      <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                      </svg>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-2 flex-1">
+                                    <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-teal-600 rounded-full flex items-center justify-center text-white text-sm font-medium">
+                                      {client.first_name.charAt(0).toUpperCase()}{client.last_name.charAt(0).toUpperCase()}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                      <div className="text-sm font-medium truncate">{client.first_name} {client.last_name}</div>
+                                      {client.email && (
+                                        <div className="text-xs text-slate-500 truncate">{client.email}</div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                            
+                            {filteredClients.length === 0 && clientSearchTerm && (
+                              <div className="text-center text-slate-500 text-sm py-4">
+                                <svg className="w-8 h-8 mx-auto mb-2 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                </svg>
+                                No clients found for "{clientSearchTerm}"
+                              </div>
+                            )}
+                            
+                            {clients.length === 0 && (
+                              <div className="text-center text-slate-500 text-sm py-4">
+                                <svg className="w-8 h-8 mx-auto mb-2 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                                </svg>
+                                No clients available
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+              </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Discussion Status
@@ -2864,7 +3044,7 @@ const ChatApplication: React.FC = () => {
                             );
                           })}
                           
-                          {filteredClients.length === 0 && clientSearchTerm && (
+                          {filteredTaskClients.length === 0 && clientSearchTerm && (
                             <div className="text-center text-slate-500 text-sm py-4">
                               <svg className="w-8 h-8 mx-auto mb-2 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
