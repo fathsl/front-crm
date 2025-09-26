@@ -1,9 +1,9 @@
-import React, { useState, useEffect, createContext, useContext } from 'react';
-import { X, MessageCircle, FileText, Mic, CheckCircle, Clock } from 'lucide-react';
+import React, { useState, useEffect, createContext, useContext, useRef } from 'react';
+import { X, MessageCircle, FileText, Mic, CheckCircle, Clock, MessageSquareCodeIcon } from 'lucide-react';
 
 interface Toast {
   id: string;
-  type: 'message' | 'file' | 'voice' | 'task';
+  type: 'message' | 'file' | 'voice' | 'task' | 'discussion';
   senderName: string;
   content: string;
   createdAt: Date;
@@ -38,6 +38,8 @@ const ToastNotification: React.FC<{ toast: Toast; onClose: (id: string, messageI
         return <Mic className="w-5 h-5 text-purple-500" />;
       case 'task':
         return <CheckCircle className="w-5 h-5 text-orange-500" />;
+      case 'discussion':
+        return <MessageSquareCodeIcon className="w-5 h-5 text-orange-500" />;
       default:
         return <MessageCircle className="w-5 h-5 text-blue-500" />;
     }
@@ -53,6 +55,8 @@ const ToastNotification: React.FC<{ toast: Toast; onClose: (id: string, messageI
         return 'Voice Message';
       case 'task':
         return 'Task Assigned';
+      case 'discussion':
+        return 'New Discussion';
       default:
         return 'New Message';
     }
@@ -151,6 +155,12 @@ const ToastNotification: React.FC<{ toast: Toast; onClose: (id: string, messageI
           <span>Task requires your attention</span>
         </div>
       )}
+      {toast.type === 'discussion' && (
+        <div className="mt-2 flex items-center space-x-1 text-xs text-orange-600 dark:text-orange-400">
+          <MessageSquareCodeIcon className="w-3 h-3" />
+          <span>New discussion created by {toast.senderName}</span>
+        </div>
+      )}
     </div>
   );
 };
@@ -177,7 +187,6 @@ const ToastContainer: React.FC<{ toasts: Toast[]; onRemoveToast: (id: string, me
 export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [toasts, setToasts] = useState<Toast[]>([]);
 
-  // Per-day dismissed message IDs persistence
   const getTodayKey = () => {
     const d = new Date();
     const y = d.getFullYear();
@@ -197,6 +206,8 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   });
 
+  const processedMessageIds = useRef(new Set<number>());
+
   useEffect(() => {
     try {
       localStorage.setItem(todayKey, JSON.stringify(Array.from(dismissedIds)));
@@ -204,10 +215,23 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [dismissedIds, todayKey]);
 
   const addToast = (toastData: Omit<Toast, 'id'>) => {
+    if (toastData.messageId && processedMessageIds.current.has(toastData.messageId)) {
+      return;
+    }
+
+    if (!toastData.senderName || !toastData.content) {
+      console.warn('Toast data missing required fields:', toastData);
+      return;
+    }
+
     const newToast: Toast = {
       ...toastData,
       id: `toast-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
     };
+    
+    if (toastData.messageId) {
+      processedMessageIds.current.add(toastData.messageId);
+    }
     
     setToasts(prev => [...prev, newToast]);
   };
@@ -251,9 +275,13 @@ export const useMessageToast = (currentUser: any) => {
   const { addToast } = useToast();
 
   const showToastForMessage = (message: any, senderName: string) => {
+    if (!message || !senderName) {
+      console.warn('Invalid message or senderName provided to showToastForMessage');
+      return;
+    }
+
     if (message.receiverId !== currentUser?.userId) return;
 
-    // Skip if dismissed today
     try {
       const d = new Date();
       const key = `dismissedMessageIds:${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -267,7 +295,7 @@ export const useMessageToast = (currentUser: any) => {
     } catch {}
 
     let toastType: Toast['type'] = 'message';
-    let content = message.content;
+    let content = message.content || 'New message received';
 
     switch (message.messageType) {
       case 1:
@@ -283,7 +311,11 @@ export const useMessageToast = (currentUser: any) => {
         break;
       case 4:
         toastType = 'task';
-        content = message.taskTitle || message.content;
+        content = message.taskTitle || message.content || 'New task assigned';
+        break;
+      case 5:
+        toastType = 'discussion';
+        content = message.title || 'New discussion created';
         break;
       default:
         toastType = 'message';
@@ -291,7 +323,7 @@ export const useMessageToast = (currentUser: any) => {
 
     addToast({
       type: toastType,
-      senderName: senderName,
+      senderName: senderName.trim(),
       content: content,
       createdAt: new Date(message.createdAt || new Date()),
       duration: message.duration,

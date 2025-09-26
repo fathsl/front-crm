@@ -9,6 +9,29 @@ const NotificationsWatcher: React.FC = () => {
   const baseUrl = 'https://api-crm-tegd.onrender.com';
   const notifiedThisSession = useRef<Set<number>>(new Set());
   const controllerRef = useRef<AbortController | null>(null);
+  const userNameCacheRef = useRef<Map<number, string>>(new Map());
+  const knownDiscussionIdsRef = useRef<Set<number>>(new Set());
+
+  const resolveSenderName = async (senderId?: number, fallback?: string): Promise<string> => {
+    const fb = (fallback || '').trim();
+    if (fb) return fb;
+    if (!senderId || isNaN(Number(senderId))) return 'New Message';
+    const cached = userNameCacheRef.current.get(senderId);
+    if (cached) return cached;
+    try {
+      const resp = await fetch(`${baseUrl}/api/User`);
+      if (resp.ok) {
+        const list = await resp.json();
+        const user = Array.isArray(list) ? list.find((u: any) => Number(u.userId) === Number(senderId)) : null;
+        const name = (user?.kullaniciAdi || user?.fullName || '').trim();
+        if (name) {
+          userNameCacheRef.current.set(senderId, name);
+          return name;
+        }
+      }
+    } catch {}
+    return 'New Message';
+  };
 
   useEffect(() => {
     if (!currentUser?.userId) return;
@@ -22,10 +45,26 @@ const NotificationsWatcher: React.FC = () => {
       try {
         const resp = await fetch(`${baseUrl}/api/Chat/discussions/${currentUser.userId}`, { signal: controller.signal });
         if (!resp.ok) return;
-        const discussions: Array<{ id: number }> = await resp.json();
+        const discussions: Array<{ id: number; senderId?: number; receiverId?: number; title?: string; createdAt?: string | Date }> = await resp.json();
         const unique = Array.isArray(discussions)
           ? discussions.filter((d, i, self) => i === self.findIndex(x => x.id === d.id))
           : [];
+
+        for (const d of unique) {
+          if (cancelled) break;
+          if (!d || typeof d.id !== 'number') continue;
+          if (knownDiscussionIdsRef.current.has(d.id)) continue;
+          knownDiscussionIdsRef.current.add(d.id);
+          if (Number(d.receiverId) === Number(currentUser.userId)) {
+            const senderName = await resolveSenderName(d.senderId, undefined);
+            showToastForMessage({
+              ...d,
+              messageType: 5,
+              content: d.title || 'New discussion created',
+              createdAt: d.createdAt ? new Date(d.createdAt) : new Date()
+            }, senderName);
+          }
+        }
 
         const slice = unique.slice(0, 12);
         for (const d of slice) {
@@ -39,7 +78,7 @@ const NotificationsWatcher: React.FC = () => {
               if (!msg || typeof msg.id !== 'number') continue;
               if (notifiedThisSession.current.has(msg.id)) continue;
               if (msg.receiverId === currentUser.userId && msg.isSeen === false) {
-                const senderName = msg.senderName || 'New message';
+                const senderName = await resolveSenderName(msg.senderId, msg.senderName);
                 showToastForMessage(msg, senderName);
                 notifiedThisSession.current.add(msg.id);
               }

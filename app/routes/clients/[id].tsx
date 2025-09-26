@@ -492,21 +492,21 @@ const ClientDetailsPage = () => {
               <Mail className="h-5 w-5 text-gray-400" />
               <div>
                 <p className="text-sm text-gray-500">Email</p>
-                <p className="font-medium">{client?.email}</p>
+                <p className="font-medium text-black">{client?.email}</p>
               </div>
             </div>
             <div className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
               <Phone className="h-5 w-5 text-gray-400" />
               <div>
                 <p className="text-sm text-gray-500">Phone</p>
-                <p className="font-medium">{client?.phone}</p>
+                <p className="font-medium text-black">{client?.phone}</p>
               </div>
             </div>
             <div className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
               <Calendar className="h-5 w-5 text-gray-400" />
               <div>
                 <p className="text-sm text-gray-500">Client Since</p>
-                <p className="font-medium">{client?.createdAt ? new Date(client?.createdAt).toDateString() : ""}</p>
+                <p className="font-medium text-black">{client?.createdAt ? new Date(client?.createdAt).toDateString() : ""}</p>
               </div>
             </div>
           </div>
@@ -514,7 +514,7 @@ const ClientDetailsPage = () => {
             <MapPin className="h-5 w-5 text-gray-400" />
             <div>
               <p className="text-sm text-gray-500">Address</p>
-              <p className="font-medium">{client?.address}</p>
+              <p className="font-medium text-black">{client?.address}</p>
             </div>
           </div>
         </div>
@@ -829,7 +829,7 @@ const ClientDetailsPage = () => {
                     value={resourceTitle}
                     onChange={(e) => setResourceTitle(e.target.value)}
                     placeholder="Resource title (optional)"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full px-3 py-2 text-black border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
                 </div>
 
@@ -840,7 +840,7 @@ const ClientDetailsPage = () => {
                     onChange={(e) => setResourceDescription(e.target.value)}
                     placeholder="Description (optional)"
                     rows={3}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                    className="w-full px-3 py-2 text-black border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
                   />
                 </div>
 

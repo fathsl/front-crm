@@ -145,47 +145,39 @@ export default function Clients() {
 
   useEffect(() => {
     if (!clients) return;
+   
+    let filtered = clients;
+
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase();
-      const locallyFiltered = clients.filter(client => 
-        client.country.toLowerCase().includes(term) ||
-        client.phone.toLowerCase().includes(term) ||
-        client.email.toLowerCase().includes(term) ||
-        client.last_name.toLowerCase().includes(term) ||
-        client.first_name.toLowerCase().includes(term) ||
-        client.details.toLowerCase().includes(term)
+      filtered = clients.filter(client =>
+        (client.country?.toLowerCase() || '').includes(term) ||
+        (client.phone?.toLowerCase() || '').includes(term) ||
+        (client.email?.toLowerCase() || '').includes(term) ||
+        (client.last_name?.toLowerCase() || '').includes(term) ||
+        (client.first_name?.toLowerCase() || '').includes(term) ||
+        (client.details?.toLowerCase() || '').includes(term)
       );
-      setFilteredClients(filterByRole(locallyFiltered));
-    } else {
-      setFilteredClients(filterByRole(clients));
     }
-  }, [currentUser, isAdmin]);
-
-  const handleSearch = async (query: string) => {
-    setSearchTerm(query);
-    if (!query.trim()) {
-      setFilteredClients(filterByRole(clients));
-      return;
-    }
-
-    try {
-      const response = await fetch(`${baseUrl}/api/Clients/search?query=${encodeURIComponent(query)}`);
-      if (response.ok) {
-        const data = await response.json();
-        setFilteredClients(filterByRole(data));
+   
+    filtered = filterByRole(filtered);
+   
+    filtered = filtered.sort((a, b) => {
+      const dateA = new Date(a.createdAt || 0);
+      const dateB = new Date(b.createdAt || 0);
+      if (dateB.getTime() !== dateA.getTime()) {
+        return dateB.getTime() - dateA.getTime();
       }
-    } catch (err) {
-      console.error('Search error:', err);
-      const filtered = clients.filter(client => 
-        client.country.toLowerCase().includes(query.toLowerCase()) ||
-        client.phone.toLowerCase().includes(query.toLowerCase()) ||
-        client.email.toLowerCase().includes(query.toLowerCase()) ||
-        client.last_name.toLowerCase().includes(query.toLowerCase()) ||
-        client.first_name.toLowerCase().includes(query.toLowerCase()) ||
-        client.details.toLowerCase().includes(query.toLowerCase())
-      );
-      setFilteredClients(filterByRole(filtered));
-    }
+      const modifiedByA = String(a.modifiedBy || '');
+      const modifiedByB = String(b.modifiedBy || '');
+      return modifiedByA.localeCompare(modifiedByB);
+    });
+   
+    setFilteredClients(filtered);
+  }, [clients, searchTerm, currentUser, isAdmin]);
+
+  const handleSearch = (query: string) => {
+    setSearchTerm(query);
   };
 
   const createClient = async (clientData: Client) => {
@@ -368,7 +360,7 @@ export default function Clients() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 w-full">
       <div className="bg-white shadow">
         <div className="max-w-7xl mx-auto px-4 py-4 sm:px-6 lg:px-8 flex justify-between items-center">
           <div>
@@ -652,7 +644,7 @@ export default function Clients() {
     {showModal && (
       <div className="fixed inset-0 bg-black/50 flex justify-end z-50">
       <div className="bg-white rounded-l-2xl w-full max-w-md h-full overflow-y-auto">
-        <div className="flex items-center justify-between p-4 border-b">
+        <div className="flex items-center justify-between p-4 border-b text-black">
           <h2 className="text-lg font-semibold">
             {modalMode === 'add' ? 'Yeni Kullanıcı Ekle' : 'Kullanıcı Düzenle'}
           </h2>
@@ -660,7 +652,7 @@ export default function Clients() {
             onClick={() => setShowModal(false)}
             className="p-1 hover:bg-gray-100 rounded"
           >
-            <X className="h-5 w-5" />
+            <X className="h-5 w-5 text-black" />
           </button>
         </div>
         
@@ -676,7 +668,7 @@ export default function Clients() {
                 value={formData.first_name}
                 onChange={(e) => setFormData({...formData, first_name: e.target.value})}
                 required
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow duration-200 hover:shadow-sm"
+                className="w-full px-4 py-2 text-black border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow duration-200 hover:shadow-sm"
                 placeholder="Enter first name"
               />
             </div>
@@ -689,7 +681,7 @@ export default function Clients() {
                 value={formData.last_name}
                 onChange={(e) => setFormData({...formData, last_name: e.target.value})}
                 required
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow duration-200 hover:shadow-sm"
+                className="w-full px-4 py-2 text-black border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow duration-200 hover:shadow-sm"
                 placeholder="Enter last name"
               />
             </div>
@@ -705,7 +697,7 @@ export default function Clients() {
                 value={formData.email}
                 onChange={(e) => setFormData({...formData, email: e.target.value})}
                 required
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow duration-200 hover:shadow-sm"
+                className="w-full px-4 py-2 text-black border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow duration-200 hover:shadow-sm"
                 placeholder="Enter email address"
               />
             </div>
@@ -717,7 +709,7 @@ export default function Clients() {
                 type="tel"
                 value={formData.phone}
                 onChange={(e) => setFormData({...formData, phone: e.target.value})}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow duration-200 hover:shadow-sm"
+                className="w-full px-4 py-2 text-black border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow duration-200 hover:shadow-sm"
                 placeholder="Enter phone number"
               />
             </div>
@@ -731,7 +723,7 @@ export default function Clients() {
               <select
                 value={formData.country}
                 onChange={(e) => setFormData({...formData, country: e.target.value})}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow duration-200 hover:shadow-sm"
+                className="w-full px-4 py-2 text-black border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow duration-200 hover:shadow-sm"
               >
                 <option value="">Select a country</option>
                 {countries.map((country) => (
@@ -749,7 +741,7 @@ export default function Clients() {
                 type="text"
                 value={formData.city || ''}
                 onChange={(e) => setFormData({...formData, city: e.target.value})}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow duration-200 hover:shadow-sm"
+                className="w-full px-4 py-2 text-black border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow duration-200 hover:shadow-sm"
                 placeholder="Enter city"
               />
             </div>
@@ -764,7 +756,7 @@ export default function Clients() {
                 type="text"
                 value={formData.address || ''}
                 onChange={(e) => setFormData({...formData, address: e.target.value})}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow duration-200 hover:shadow-sm"
+                className="w-full px-4 py-2 text-black border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow duration-200 hover:shadow-sm"
                 placeholder="Enter full address"
               />
             </div>
@@ -776,7 +768,7 @@ export default function Clients() {
                 type="text"
                 value={formData.zipCode || ''}
                 onChange={(e) => setFormData({...formData, zipCode: e.target.value})}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow duration-200 hover:shadow-sm"
+                className="w-full px-4 py-2 text-black border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow duration-200 hover:shadow-sm"
                 placeholder="Enter zip code"
               />
             </div>
@@ -791,12 +783,12 @@ export default function Clients() {
                 type="text"
                 value={formData.VATNumber || ''}
                 onChange={(e) => setFormData({...formData, VATNumber: e.target.value})}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow duration-200 hover:shadow-sm"
+                className="w-full px-4 py-2 text-black border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow duration-200 hover:shadow-sm"
                 placeholder="Enter VAT number"
               />
             </div>
           </div>
-          
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Client Image
@@ -818,7 +810,7 @@ export default function Clients() {
                     setFormData({...formData, file, imageUrl: URL.createObjectURL(file)});
                   }
                 }}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 transition-shadow duration-200 hover:shadow-sm"
+                className="w-full px-4 py-2 text-black border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 transition-shadow duration-200 hover:shadow-sm"
               />
             </div>
           </div>
@@ -831,7 +823,7 @@ export default function Clients() {
               rows={4}
               value={formData.details}
               onChange={(e) => setFormData({...formData, details: e.target.value})}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow duration-200 hover:shadow-sm"
+              className="w-full px-4 py-2 text-black border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow duration-200 hover:shadow-sm"
               placeholder="Additional information about the client..."
             />
           </div>

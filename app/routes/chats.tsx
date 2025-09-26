@@ -39,8 +39,8 @@ interface MessageResponse {
 enum MessageType {
   Text = 1,
   File = 2,
-  Task = 3,
-  Voice = 4,
+  Voice = 3,
+  Task = 4,
 }
 
 interface DiscussionWithLastTask extends Discussion {
@@ -159,13 +159,13 @@ const ChatApplication: React.FC = () => {
   const isRecordingCanceled = useRef(false);
   const navigate = useNavigate();
   const baseUrl = "https://api-crm-tegd.onrender.com";
-  const isAdmin = currentUser?.role === "Yonetici"
+  const isAdmin = currentUser?.role === "Yonetici";
 
   const filterByRole = (list: Client[]) => {
       if (isAdmin) return list;
       const uid = currentUser?.userId ?? -1;
       return list.filter(c => c.createdBy === uid);
-    };
+  };
 
   const sortByCreatedAtAsc = (arr: Message[]) => {
     const toTime = (m: any) => {
@@ -499,34 +499,45 @@ const ChatApplication: React.FC = () => {
     }
 }, [currentUser]);
 
-  const createDiscussion = async () => {
-    if (!selectedUser || !newDiscussionTitle.trim() || isCreatingDiscussion) return;
-
-    setIsCreatingDiscussion(true);
-
-    const request: CreateDiscussionRequest = {
-      title: newDiscussionTitle,
-      description: newDiscussionDescription,
-      createdByUserId: currentUser?.userId || 0,
-      participantUserIds: [currentUser?.userId || 0, selectedUser.userId],
-      senderId: currentUser?.userId || 0,
-      receiverId: selectedUser.userId,
-      clientId: (selectedClients[0]?.id) ?? (selectedClientId || 0),
-      clientIds: selectedClients.map(c => c.id),
-      status: newDiscussionStatus
-    };
+const createDiscussion = async () => {
+  if (!selectedUser || !newDiscussionTitle.trim() || isCreatingDiscussion) return;
+  setIsCreatingDiscussion(true);
   
-    try {
-      const response = await fetch(`${baseUrl}/api/Chat/discussions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(request)
-      });
+  const clientId = (selectedClients[0]?.id) ?? (selectedClientId || 0);
+  
+  const request: CreateDiscussionRequest = {
+    title: newDiscussionTitle,
+    description: newDiscussionDescription,
+    createdByUserId: currentUser?.userId || 0,
+    participantUserIds: [currentUser?.userId || 0, selectedUser.userId],
+    senderId: currentUser?.userId || 0,
+    receiverId: selectedUser.userId,
+    ...(clientId > 0 && { clientId: clientId }),
+    clientIds: selectedClients.map(c => c.id),
+    status: newDiscussionStatus
+  };
+
+  try {
+    const response = await fetch(`${baseUrl}/api/Chat/discussions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(request)
+    });
   
       if (response.ok) {
         const newDiscussion = await response.json();
+        if (currentUser && newDiscussion?.receiverId && Number(newDiscussion.receiverId) === Number(currentUser.userId)) {
+          const senderLabel = users.find(u => u.userId === newDiscussion.senderId)?.kullaniciAdi || currentUser.kullaniciAdi;
+          showToastForMessage({
+            ...newDiscussion,
+            messageType: 5,
+            content: newDiscussion.title,
+            senderName: senderLabel,
+            createdAt: new Date()
+          }, senderLabel);
+        }
         setDiscussions(prev => [newDiscussion, ...prev]);
         setNewDiscussionTitle('');
         setNewDiscussionDescription('');
@@ -762,7 +773,7 @@ const ChatApplication: React.FC = () => {
     } finally {
         setUploading(false);
     }
-};
+  };
 
   const sendMessage = async () => {
     if ((!newMessage.trim() && !selectedFile) || !selectedDiscussion || !currentUser) return;
@@ -771,15 +782,16 @@ const ChatApplication: React.FC = () => {
       await handleFileUpload(selectedFile);
       return;
     }
-  
+
     const request: SendMessageRequest = {
       discussionId: selectedDiscussion.id,
       senderId: currentUser.userId,
       receiverId: selectedUser?.userId || 0,
+      senderName: currentUser.kullaniciAdi,
       content: newMessage,
       messageType: 1
-    };    
-  
+    };
+
     try {
       const response = await fetch(`${baseUrl}/api/Chat/messages`, {
         method: 'POST',
@@ -788,7 +800,7 @@ const ChatApplication: React.FC = () => {
         },
         body: JSON.stringify(request)
       });
-  
+
       if (response.ok) {
         const result = await response.json();
         if (currentUser && result?.receiverId && Number(result.receiverId) === Number(currentUser.userId)) {
@@ -797,9 +809,11 @@ const ChatApplication: React.FC = () => {
             ...result,
             messageType: 1,
             content: newMessage,
+            senderName: senderLabel,
             createdAt: new Date()
           }, senderLabel);
         }
+
         refreshDiscussionsAfterMessage();
         setNewMessage('');
         await fetchMessages(selectedDiscussion.id);
@@ -1091,7 +1105,7 @@ const ChatApplication: React.FC = () => {
 
   const sendVoiceMessage = async () => {
     if (!audioBlob || !selectedDiscussion || !currentUser) return;
-    
+
     try {
         setUploading(true);
         const voiceFileName = `voice_${Date.now()}.webm`;
@@ -1114,7 +1128,7 @@ const ChatApplication: React.FC = () => {
         formData.append('bucketName', 'voice-messages');
         formData.append('fileKey', `voice_${Date.now()}_${voiceFileName}`);
         formData.append('fileReference', `voice_ref_${Date.now()}_${voiceFileName}`);
-        
+
         console.log('Sending voice message with duration:', recordingTime);
        
       const response = await fetch(`${baseUrl}/api/Chat/messages/send-with-voice`, {
@@ -1128,7 +1142,6 @@ const ChatApplication: React.FC = () => {
         }
        
       const result = await response.json();
-      console.log('Voice message sent successfully:', result);
        
       const newVoiceMessage: Message = {
             id: result.id,
@@ -1148,15 +1161,17 @@ const ChatApplication: React.FC = () => {
             fileName: result.fileName,
             mimeType: result.mimeType
         };
-      
+
       if (currentUser && newVoiceMessage.receiverId && Number(newVoiceMessage.receiverId) === Number(currentUser.userId)) {
           const senderLabel = users.find(u => u.userId === newVoiceMessage.senderId)?.kullaniciAdi || currentUser.kullaniciAdi;
           showToastForMessage({
             ...newVoiceMessage,
             messageType: 3,
+            senderName: senderLabel,
             duration: recordingTime
           }, senderLabel);
       }
+
       refreshDiscussionsAfterMessage();
       setMessages(prev => sortByCreatedAtAsc([...(prev as Message[]), newVoiceMessage]));
       setAudioBlob(null);
@@ -1426,7 +1441,7 @@ const ChatApplication: React.FC = () => {
     projectIds: number[],
   ) => {
     if (!taskContent.trim() && !taskFile && !taskAudioBlob) return;
-  
+
     const taskMessageData = {
       discussionId: selectedDiscussion?.id ?? 0,
       senderId: currentUser?.userId ?? 0,
@@ -1497,11 +1512,14 @@ const ChatApplication: React.FC = () => {
         const result: MessageResponse = await response.json();
         if (currentUser && result?.receiverId && Number(result.receiverId) === Number(currentUser.userId)) {
           const senderLabel = users.find(u => u.userId === result.senderId)?.kullaniciAdi || currentUser?.kullaniciAdi || 'New message';
+          console.log("senderLabel", senderLabel);
+          
           showToastForMessage({
             ...result,
             messageType: 4,
             taskTitle: taskContent,
             content: taskContent,
+            senderName: senderLabel,
             duration: taskDrawerType === MessageType.Voice ? taskRecordingTime : undefined
           }, senderLabel);
         }
@@ -2359,8 +2377,8 @@ const ChatApplication: React.FC = () => {
                 }`}
               >
               <div className={`max-w-xs sm:max-w-sm lg:max-w-md`}>
-                {message.messageType === 3 ? (
-                  <TaskMessage 
+                {message.messageType === 4 ? (
+                  <TaskMessage
                   task={{
                     id: message.id,
                     title: message.taskTitle || 'Untitled Task',
@@ -2404,7 +2422,7 @@ const ChatApplication: React.FC = () => {
                   onPlayVoice={message.duration ? () => playTaskVoiceMessage(message.taskId || 0, message.id, message) : undefined}
                   onDownloadFile={message.fileName ? () => downloadTaskFile(message.taskId || 0, message.id, message.fileName!) : undefined}                  isPlaying={playingVoiceId === message.id}
                 />
-                ) : message.messageType === 4 ? (
+                ) : message.messageType === 3 ? (
                   <div className={`bg-blue-500 text-white rounded-2xl p-4`}>
                     <VoiceMessage message={message} />
                   </div>
@@ -2451,7 +2469,7 @@ const ChatApplication: React.FC = () => {
                     return <div className="flex items-center">{checks}<span className="ml-1 text-gray-500">Unseen</span></div>;
                   })()}
                 </div>
-                {message.senderId === currentUser?.userId && (message.messageType === 1 || message.messageType === 4) && (
+                {message.senderId === currentUser?.userId && currentUser.role === "Yonetici" && (
                     <div className="flex space-x-2 mt-2 text-xs opacity-75">
                       <button
                         onClick={() => {
@@ -2484,14 +2502,6 @@ const ChatApplication: React.FC = () => {
                   <span className="text-red-600 text-sm">
                     {Math.floor(recordingTime / 60)}:{(recordingTime % 60).toString().padStart(2, '0')}
                   </span>
-                </div>
-                <div className="flex space-x-2">
-                  <button
-                    onClick={() => setIsRecording(false)}
-                    className="p-1 text-red-500 hover:bg-red-100 rounded transition"
-                  >
-                    <Pause className="w-4 h-4" />
-                  </button>
                 </div>
               </div>
             </div>
@@ -2572,7 +2582,6 @@ const ChatApplication: React.FC = () => {
                 className="hidden"
                 disabled={uploading || isRecording}
               />
-
               <button
                 onClick={() => fileInputRef.current?.click()}
                 className="p-3 text-slate-500 hover:text-slate-700 rounded-full hover:bg-slate-100 transition"
@@ -2591,7 +2600,7 @@ const ChatApplication: React.FC = () => {
                   value={newMessage}
                   onChange={(e) => setNewMessage(e.target.value)}
                   placeholder="Type a message..."
-                  className="w-full p-3 pr-12 bg-gray-50 border-0 rounded-2xl resize-none focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:bg-white transition-all"
+                  className="w-full p-3 pr-12 text-black bg-gray-50 border-0 rounded-2xl resize-none focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:bg-white transition-all"
                   rows={1}
                   onKeyPress={(e) => {
                     if (e.key === "Enter" && !e.shiftKey) {
@@ -3433,7 +3442,7 @@ const ChatApplication: React.FC = () => {
             </div>
           </div>
         </div>
-      )}
+    )}
 
     </div>
   );

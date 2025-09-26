@@ -300,7 +300,7 @@ export interface CreateDiscussionRequest {
     participantUserIds: number[];
     senderId: number;
     receiverId: number;
-    clientId: number;
+    clientId?: number;
     clientIds?: number[];
     status: DiscussionStatus;
 }
@@ -316,6 +316,7 @@ export interface SendMessageRequest {
     discussionId: number;
     senderId: number;
     receiverId: number;
+    senderName: string;
     content: string;
     messageType: MessageType;
 }
