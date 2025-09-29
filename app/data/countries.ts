@@ -70,5 +70,6 @@ export const countries = [
   { code: 'AE', name: 'United Arab Emirates' },
   { code: 'GB', name: 'United Kingdom' },
   { code: 'US', name: 'United States' },
+  { code: 'UZ', name: 'Uzbekistan' },
   { code: 'VN', name: 'Vietnam' },
 ];

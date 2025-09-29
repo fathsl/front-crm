@@ -43,7 +43,7 @@ enum MessageType {
   Task = 4,
 }
 
-interface DiscussionWithLastTask extends Discussion {
+export interface DiscussionWithLastTask extends Discussion {
   lastTaskStatus?: TaskStatusBg;
   senderName?: string;
   receiverName?: string;
@@ -145,6 +145,7 @@ const ChatApplication: React.FC = () => {
   const [unreadCounts, setUnreadCounts] = useState<Record<number, number>>({});
   const [selectedClientId, setSelectedClientId] = useState<number | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [discussionSearchTerm, setDiscussionSearchTerm] = useState('');
   const { showToastForMessage } = useMessageToast(currentUser);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
@@ -500,13 +501,21 @@ const ChatApplication: React.FC = () => {
 }, [currentUser]);
 
 const createDiscussion = async () => {
-  if (!selectedUser || !newDiscussionTitle.trim() || isCreatingDiscussion) return;
+  if (!selectedUser || isCreatingDiscussion) return;
   setIsCreatingDiscussion(true);
   
   const clientId = (selectedClients[0]?.id) ?? (selectedClientId || 0);
+  const selectedClient = selectedClients[0] ?? (clientId ? clients.find(c => c.id === clientId) : undefined);
+  const computedTitle = newDiscussionTitle.trim() || (selectedClient ? `${selectedClient.first_name} ${selectedClient.last_name}` : '');
+
+  if (!computedTitle) {
+    setIsCreatingDiscussion(false);
+    alert('Please enter a title or select a client to auto-fill the title.');
+    return;
+  }
   
   const request: CreateDiscussionRequest = {
-    title: newDiscussionTitle,
+    title: computedTitle,
     description: newDiscussionDescription,
     createdByUserId: currentUser?.userId || 0,
     participantUserIds: [currentUser?.userId || 0, selectedUser.userId],
@@ -697,6 +706,32 @@ const createDiscussion = async () => {
       (user.email && user.email.toLowerCase().includes(searchTerm.toLowerCase()))
     )
   ), [users, searchTerm]);
+
+  // Safely get associated client first_names for a discussion (supports clientIds[] or clientId)
+  const getDiscussionClientFirstNames = useCallback((discussion: any): string[] => {
+    try {
+      const ids: number[] = Array.isArray(discussion?.clientIds)
+        ? discussion.clientIds
+        : (discussion?.clientId ? [discussion.clientId] : []);
+      if (!ids || ids.length === 0) return [];
+      const lookup = new Map(clients.map(c => [c.id, c]));
+      return ids.map(id => lookup.get(id)?.first_name).filter(Boolean) as string[];
+    } catch {
+      return [];
+    }
+  }, [clients]);
+
+  // Filter discussions by title or client first_name
+  const filteredDiscussions = useMemo(() => {
+    const q = discussionSearchTerm.trim().toLowerCase();
+    if (!q) return discussions;
+    return discussions.filter(d => {
+      const inTitle = (d.title || '').toLowerCase().includes(q);
+      const clientNames = getDiscussionClientFirstNames(d).map(n => n.toLowerCase());
+      const inClient = clientNames.some(n => n.includes(q));
+      return inTitle || inClient;
+    });
+  }, [discussions, discussionSearchTerm, getDiscussionClientFirstNames]);
 
   const handleFileUpload = async (file: File) => {
     if (!selectedDiscussion || !currentUser) {
@@ -1954,6 +1989,18 @@ const createDiscussion = async () => {
             )}
           </div>
         </div>
+        <div className="mt-3">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
+            <input
+              type="text"
+              placeholder="Search by client or title..."
+              value={discussionSearchTerm}
+              onChange={(e) => setDiscussionSearchTerm(e.target.value)}
+              className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+          </div>
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto p-2">
@@ -1966,8 +2013,12 @@ const createDiscussion = async () => {
               }
             </div>
           </div>
+        ) : filteredDiscussions.length === 0 ? (
+          <div className="p-4 text-center text-gray-500">
+            <div className="text-sm">No discussions match your search.</div>
+          </div>
         ) : (
-          discussions.map((discussion) => {
+          filteredDiscussions.map((discussion) => {
             const isSelected = selectedDiscussion?.id === discussion.id;
             const unreadCount = unreadCounts[discussion.id] || 0;
             const unseenCount = unseenCounts[discussion.id] || 0;

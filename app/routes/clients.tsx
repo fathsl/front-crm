@@ -1,11 +1,13 @@
 import { useAtomValue } from 'jotai';
-import { Edit2, Mail, Phone, Plus, Save, Search, Shield, Trash2, UserIcon, X, MapPin, Info, Home, FileText, MessageSquare, Calendar, EyeIcon } from 'lucide-react';
+import { Edit2, Mail, Phone, Plus, Save, Search, Shield, Trash2, UserIcon, X, MapPin, Info, Home, FileText, MessageSquare, Calendar, EyeIcon, Check } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Role, type Client, type Project } from '~/help';
+import { DiscussionStatus, Role, type Client, type CreateDiscussionRequest, type Discussion, type Project } from '~/help';
 import { userAtom, type User } from '~/utils/userAtom';
 import { countries } from '~/data/countries';
 import { useNavigate } from 'react-router';
+import type { DiscussionWithLastTask } from './chats';
+import { useMessageToast } from '~/components/ToastNotificationSystem';
 
 interface ExtendedClient extends Client {
   id: number;
@@ -41,8 +43,18 @@ export default function Clients() {
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   const [usersById, setUsersById] = useState<Record<string, any>>({});
   const currentUser = useAtomValue<User | null>(userAtom);
+  const [showUserSelector, setShowUserSelector] = useState(false);
+  const [pendingClientId, setPendingClientId] = useState<number | null>(null);
+  const [selectedUserForDiscussion, setSelectedUserForDiscussion] = useState<User | null>(null);
+  const [users, setUsers] = useState<User[]>([]);
+  const [newDiscussionTitle, setNewDiscussionTitle] = useState('');
+  const [newDiscussionDescription, setNewDiscussionDescription] = useState('');
+  const [isCreatingDiscussion, setIsCreatingDiscussion] = useState(false);
+  const [discussions, setDiscussions] = useState<DiscussionWithLastTask[]>([]);
+  const [showCreateDiscussion, setShowCreateDiscussion] = useState(false);
   const isAdmin = (currentUser?.permissionType === 'Yonetici') || (currentUser?.role === 'Yonetici');
-
+  const { showToastForMessage } = useMessageToast(currentUser);
+  const [selectedDiscussion, setSelectedDiscussion] = useState<Discussion | null>(null);
   const filterByRole = (list: Client[]) => {
     if (isAdmin) return list;
     const uid = currentUser?.userId ?? -1;
@@ -94,6 +106,26 @@ export default function Clients() {
     }
   };
 
+  const fetchUsers = async () => {
+      try {
+        setLoading(true);
+        const response = await fetch(`${baseUrl}/api/User`);
+        if (response.ok) {
+          const data = await response.json();
+          const filteredUsers = data.filter((user: User) => user.userId !== currentUser?.userId).sort((a: User, b: User) => a.fullName.localeCompare(b.fullName));
+          setUsers(filteredUsers);
+          console.log("users", filteredUsers);
+        } else {
+          throw new Error('Failed to fetch users');
+        }
+      } catch (err) {
+        setError('Kullanıcılar yüklenirken hata oluştu');
+        console.error('Error fetching users:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
   const fetchProjects = async () => {
       try {
         const response = await fetch('https://api-crm-tegd.onrender.com/api/Project');
@@ -135,6 +167,7 @@ export default function Clients() {
   
   useEffect(() => {
     fetchProjects();
+    fetchUsers();
   }, []);
 
   useEffect(() => {
@@ -355,6 +388,125 @@ export default function Clients() {
     setShowModal(true);
   };
 
+  const handleClientDiscussionClick = (clientId: number) => {
+    setPendingClientId(clientId);
+    setShowUserSelector(true);
+  };
+  
+  const handleUserSelect = (user: User) => {
+    setSelectedUserForDiscussion(user);
+  };
+  
+  const handleConfirmUserSelection = () => {
+    if (pendingClientId && selectedUserForDiscussion) {
+      createDiscussion(pendingClientId, selectedUserForDiscussion);
+    }
+  };
+
+  const createDiscussion = async (directClientId?: number, selectedUserForClient?: User) => {
+    const isDirectCreate = directClientId !== undefined;
+    
+    if (!isDirectCreate && (!selectedUserForDiscussion || isCreatingDiscussion)) return;
+    setIsCreatingDiscussion(true);
+    
+    let clientId: number;
+    let selectedClient: Client | undefined;
+    
+    if (isDirectCreate) {
+      clientId = directClientId;
+      selectedClient = clients.find(c => c.id === directClientId);
+      
+      if (!selectedUserForClient) {
+        setIsCreatingDiscussion(false);
+        alert('Please select a user to discuss with.');
+        return;
+      }
+    } else {
+      clientId = (selectedClient?.id) ?? (pendingClientId || 0);
+      selectedClient = selectedClient ?? (clientId ? clients.find(c => c.id === clientId) : undefined);
+    }
+    
+    const computedTitle = isDirectCreate
+      ? (selectedClient ? `${selectedClient.first_name} ${selectedClient.last_name}` : '')
+      : (newDiscussionTitle.trim() || (selectedClient ? `${selectedClient.first_name} ${selectedClient.last_name}` : ''));
+      
+    if (!computedTitle) {
+      setIsCreatingDiscussion(false);
+      alert('Please enter a title or select a client to auto-fill the title.');
+      return;
+    }
+    
+    const receiverUserId = isDirectCreate
+      ? selectedUserForClient?.userId || 0
+      : selectedUserForDiscussion?.userId || 0;
+    
+    const participantIds = isDirectCreate
+      ? [currentUser?.userId || 0, selectedUserForClient?.userId || 0]
+      : [currentUser?.userId || 0, selectedUserForDiscussion?.userId || 0];
+    
+    const request: CreateDiscussionRequest = {
+      title: computedTitle,
+      description: isDirectCreate ? '' : newDiscussionDescription,
+      createdByUserId: currentUser?.userId || 0,
+      participantUserIds: participantIds,
+      senderId: currentUser?.userId || 0,
+      receiverId: receiverUserId,
+      ...(clientId > 0 && { clientId: clientId }),
+      clientIds: isDirectCreate ? [clientId] : [],
+      status: isDirectCreate ? DiscussionStatus.Completed : DiscussionStatus.NotStarted
+    };
+    
+    try {
+      const response = await fetch(`${baseUrl}/api/Chat/discussions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(request)
+      });
+    
+      if (response.ok) {
+        const newDiscussion = await response.json();
+        
+        if (currentUser && newDiscussion?.receiverId && Number(newDiscussion.receiverId) === Number(currentUser.userId)) {
+          const senderLabel = users.find(u => u.userId === newDiscussion.senderId)?.fullName || currentUser.fullName;
+          showToastForMessage({
+            ...newDiscussion,
+            messageType: 5,
+            content: newDiscussion.title,
+            senderName: senderLabel,
+            createdAt: new Date()
+          }, senderLabel);
+        }
+        
+        setDiscussions(prev => [newDiscussion, ...prev]);
+        
+        if (!isDirectCreate) {
+          setNewDiscussionTitle('');
+          setNewDiscussionDescription('');
+          setShowCreateDiscussion(false);
+          setSelectedDiscussion(null);
+        } else {
+          setShowUserSelector(false);
+          setPendingClientId(null);
+          setSelectedUserForDiscussion(null);
+        }
+        
+        setSelectedDiscussion(newDiscussion);
+        
+        if (isDirectCreate) {
+          navigate(`/chats/${newDiscussion.id}`);
+        }
+      } else {
+        throw new Error('Failed to create discussion');
+      }
+    } catch (error) {
+      console.error('Error creating discussion:', error);
+    } finally {
+      setIsCreatingDiscussion(false);
+    }
+  };
+
   useEffect(() => {
     fetchClients();
   }, []);
@@ -456,6 +608,9 @@ export default function Clients() {
                      <Trash2 className="h-4 w-4" />
                    </button>
                  )}
+                 <button onClick={() => handleClientDiscussionClick(client.id)}>
+                  <MessageSquare className="h-4 w-4" />
+                </button>
                </div>
              </div>
  
@@ -849,6 +1004,89 @@ export default function Clients() {
       </div>
     </div>
     )}
+
+  {showUserSelector && (
+  <>
+    <div 
+      className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 transition-opacity duration-300"
+      onClick={() => {
+        setShowUserSelector(false);
+        setPendingClientId(null);
+        setSelectedUserForDiscussion(null);
+      }}
+    />
+    
+      <div className="fixed inset-y-0 right-0 w-full sm:w-96 bg-white shadow-xl z-50 transform transition-transform duration-300 ease-in-out flex flex-col">
+        <div className="flex items-center justify-between p-4 border-b">
+          <h3 className="text-lg font-semibold">Select User</h3>
+          <button
+            onClick={() => {
+              setShowUserSelector(false);
+              setPendingClientId(null);
+              setSelectedUserForDiscussion(null);
+            }}
+            className="p-2 hover:bg-gray-100 rounded-full transition"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        
+        <div className="flex-1 overflow-y-auto p-4">
+          <div className="space-y-2">
+            {users
+              .filter(user => user.userId !== currentUser?.userId)
+              .map(user => (
+                <div
+                  key={user.userId}
+                  onClick={() => handleUserSelect(user)}
+                  className={`p-4 border rounded-lg cursor-pointer transition-all ${
+                    selectedUserForDiscussion?.userId === user.userId
+                      ? 'border-blue-500 bg-blue-50 shadow-sm'
+                      : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-medium ${
+                      selectedUserForDiscussion?.userId === user.userId
+                        ? 'bg-blue-500'
+                        : 'bg-gray-400'
+                    }`}>
+                      {user.fullName?.charAt(0).toUpperCase() || 'U'}
+                    </div>
+                    
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-gray-900 truncate">
+                        {user.fullName}
+                      </div>
+                      {user.email && (
+                        <div className="text-sm text-gray-500 truncate">
+                          {user.email}
+                        </div>
+                      )}
+                    </div>
+                    
+                    {selectedUserForDiscussion?.userId === user.userId && (
+                      <Check className="h-5 w-5 text-blue-500 flex-shrink-0" />
+                    )}
+                  </div>
+                </div>
+              ))}
+          </div>
+        </div>
+        
+        <div className="p-4 border-t bg-gray-50">
+          <button
+            onClick={handleConfirmUserSelection}
+            disabled={!selectedUserForDiscussion}
+            className="w-full bg-blue-500 text-white px-4 py-3 rounded-lg font-medium hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+          >
+            <MessageSquare className="h-5 w-5" />
+            Create Discussion
+          </button>
+        </div>
+      </div>
+    </>
+  )}
     </div>
   );
 }
