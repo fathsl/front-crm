@@ -339,6 +339,7 @@ export interface Discussion {
     updatedAt : Date;
     senderId : number;
     receiverId : number;
+    latestMessageDate : Date;
 }
 
 export const formatFileSize = (bytes: number): string => {

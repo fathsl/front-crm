@@ -394,113 +394,121 @@ const ChatApplication: React.FC = () => {
     if (!currentUserId) return;
     setLoading(true);
     try {
-        let url = `${baseUrl}/api/Chat/discussions/${currentUserId}`;
-       
-        if (selectedUserId !== undefined) {
-            if (isAdmin) {
-                url = `${baseUrl}/api/Chat/discussions/admin/${currentUserId}/${selectedUserId}`;
-            } else {
-                url = `${baseUrl}/api/Chat/discussions/${currentUserId}/${selectedUserId}`;
-            }
-        }
-        const response = await fetch(url);
-        if (response.ok) {
-            const data: Discussion[] = await response.json();
-            const uniqueDiscussions = data.filter((discussion: Discussion, index: number, self: Discussion[]) =>
-                index === self.findIndex((d: Discussion) => d.id === discussion.id)
-            );
-            
+      let url = `${baseUrl}/api/Chat/discussions/${currentUserId}`;
+      if (selectedUserId !== undefined) {
+        url = isAdmin
+          ? `${baseUrl}/api/Chat/discussions/admin/${currentUserId}/${selectedUserId}`
+          : `${baseUrl}/api/Chat/discussions/${currentUserId}/${selectedUserId}`;
+      }
+      const response = await fetch(url);
+      if (response.ok) {
+        const data: Discussion[] = await response.json();
+        console.log('Fetched discussions:', data);
+        
+        const uniqueDiscussions = data.filter(
+          (discussion: Discussion, index: number, self: Discussion[]) =>
+            index === self.findIndex((d: Discussion) => d.id === discussion.id)
+        );
+  
+        const tuples = await Promise.all(
+          uniqueDiscussions.map(async (d) => {
             try {
-              const tuples = await Promise.all(
-                uniqueDiscussions.map(async (d) => {
-                  try {
-                    const resp = await fetch(`${baseUrl}/api/Chat/discussions/${d.id}/messages?userId=${currentUser?.userId || 0}`);
-                    if (!resp.ok) return [d.id, 0, 0, null] as const;
-                    const payload = await resp.json();
-                    const unread = Number(payload?.unreadCount) || 0;
-                    const unseen = Number(payload?.unseenCount) || 0;
-                    
-                    let latestMessageDate = null;
-                    if (payload?.messages && Array.isArray(payload.messages) && payload.messages.length > 0) {
-                      const sortedMessages = payload.messages.sort((a: any, b: any) => 
-                        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-                      );
-                      latestMessageDate = sortedMessages[0].createdAt;
-                    }
-                    
-                    return [d.id, unread, unseen, latestMessageDate] as const;
-                  } catch {
-                    return [d.id, 0, 0, null] as const;
-                  }
-                })
-              );
-              
-              const unreadMap: Record<number, number> = {};
-              const unseenMap: Record<number, number> = {};
-              const latestMessageMap: Record<number, string | null> = {};
-              
-              for (const [id, unread, unseen, latestMessage] of tuples) {
-                unreadMap[id] = unread;
-                unseenMap[id] = unseen;
-                latestMessageMap[id] = latestMessage;
+              const resp = await fetch(`${baseUrl}/api/Chat/discussions/${d.id}/messages?userId=${currentUser?.userId || 0}`);
+              if (!resp.ok) return [d.id, 0, 0, null] as const;
+              const payload = await resp.json();
+              const unread = Number(payload?.unreadCount) || 0;
+              const unseen = Number(payload?.unseenCount) || 0;
+  
+              let latestMessageDate = null;
+              if (payload?.messages && Array.isArray(payload.messages) && payload.messages.length > 0) {
+                const sortedMessages = payload.messages.sort((a: any, b: any) =>
+                  new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+                );
+                latestMessageDate = sortedMessages[0].createdAt;
               }
-              
-              const sortedDiscussions = uniqueDiscussions
-                .map((d) => ({ 
-                  ...d, 
-                  unreadCount: unreadMap[d.id] ?? 0,
-                  latestMessageDate: latestMessageMap[d.id]
-                }))
-                .sort((a, b) => {
-                  const dateA = a.latestMessageDate ? new Date(a.latestMessageDate).getTime() : new Date(a.createdAt).getTime();
-                  const dateB = b.latestMessageDate ? new Date(b.latestMessageDate).getTime() : new Date(b.createdAt).getTime();
-                  return dateB - dateA;
-                });
-              
-              setDiscussions(sortedDiscussions as any);
-              setUnreadCounts((prev) => ({ ...prev, ...unreadMap }));
-              setUnseenCounts((prev) => ({ ...prev, ...unseenMap }));
+  
+              return [d.id, unread, unseen, latestMessageDate] as const;
             } catch {
-              const fallbackSorted = uniqueDiscussions.sort((a, b) => 
-                new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-              );
-              setDiscussions(fallbackSorted as any);
+              return [d.id, 0, 0, null] as const;
             }
-        } else {
-            throw new Error('Failed to fetch discussions');
+          })
+        );
+  
+        const unreadMap: Record<number, number> = {};
+        const unseenMap: Record<number, number> = {};
+        const latestMessageMap: Record<number, string | null> = {};
+  
+        for (const [id, unread, unseen, latestMessage] of tuples) {
+          unreadMap[id] = unread;
+          unseenMap[id] = unseen;
+          latestMessageMap[id] = latestMessage;
         }
+  
+        const sortedDiscussions = uniqueDiscussions
+          .map((d) => ({
+            ...d,
+            unreadCount: unreadMap[d.id] ?? 0,
+            updatedAt: (d.updatedAt && d.updatedAt !== d.createdAt) 
+              ? d.updatedAt 
+              : (latestMessageMap[d.id] || d.createdAt)
+          }))
+          .sort((a, b) => {
+            const dateA = new Date(a.updatedAt || a.createdAt).getTime();
+            const dateB = new Date(b.updatedAt || b.createdAt).getTime();
+            console.log(`Sorting: ${a.title} (updatedAt: ${a.updatedAt}, createdAt: ${a.createdAt}) vs ${b.title} (updatedAt: ${b.updatedAt}, createdAt: ${b.createdAt})`);
+            return dateB - dateA;
+          });
+  
+        console.log('Sorted discussions:', sortedDiscussions);
+        setDiscussions(sortedDiscussions as any);
+        setUnreadCounts((prev) => ({ ...prev, ...unreadMap }));
+        setUnseenCounts((prev) => ({ ...prev, ...unseenMap }));
+      } else {
+        throw new Error('Failed to fetch discussions');
+      }
     } catch (error) {
-        console.error('Error fetching discussions:', error);
+      console.error('Error fetching discussions:', error);
     } finally {
-        setLoading(false);
+      setLoading(false);
     }
-}, [isAdmin, fetchAssignedUsers, updateUnreadCount, currentUser?.userId]);
+  }, [isAdmin, currentUser?.userId]);
 
   const fetchMessages = useCallback(async (discussionId: number) => {
     if (!currentUser) return;
-    
     try {
-        const response = await fetch(`${baseUrl}/api/Chat/discussions/${discussionId}/messages?userId=${currentUser.userId}`);
-        if (response.ok) {
-            const data = await response.json();
-            console.log("data", data);
-            
-            const { messages, unreadCount, unseenCount } = data;
-            
-            const sorted = sortByCreatedAtAsc(messages as Message[]);
-            setMessages(sorted as Message[]);
-            
-            setUnreadCounts(prev => ({ ...prev, [discussionId]: unreadCount }));
-            setUnseenCounts(prev => ({ ...prev, [discussionId]: unseenCount }));
-        } else {
-            console.error('Failed to fetch messages');
-        }
-    } catch (error) {
-        console.error('Error fetching messages:', error);
-    }
-}, [currentUser]);
+      const response = await fetch(`${baseUrl}/api/Chat/discussions/${discussionId}/messages?userId=${currentUser.userId}`);
+      if (response.ok) {
+        const data = await response.json();
+        const { messages, unreadCount, unseenCount } = data;
 
-const createDiscussion = async () => {
+        const sorted = messages.sort((a: Message, b: Message) =>
+          new Date(a.createdAt ?? 0).getTime() - new Date(b.createdAt ?? 0).getTime()
+        );
+        setMessages(sorted as Message[]);
+
+        setUnreadCounts(prev => ({ ...prev, [discussionId]: unreadCount }));
+        setUnseenCounts(prev => ({ ...prev, [discussionId]: unseenCount }));
+
+        if (messages && messages.length > 0) {
+          const latestMessage = messages.reduce((latest: Message, msg: Message) =>
+            new Date(msg.createdAt ?? 0) > new Date(latest.createdAt ?? 0) ? msg : latest
+          );
+
+          setDiscussions(prev => prev.map(disc =>
+            disc.id === discussionId
+              ? { ...disc, updatedAt: latestMessage.createdAt }
+              : disc
+          ));
+        }
+      } else {
+        console.error('Failed to fetch messages');
+      }
+    } catch (error) {
+      console.error('Error fetching messages:', error);
+    }
+  }, [currentUser]);
+
+  const createDiscussion = async () => {
   if (!selectedUser || isCreatingDiscussion) return;
   setIsCreatingDiscussion(true);
   
@@ -565,18 +573,20 @@ const createDiscussion = async () => {
     }
   };
 
-  const handleStatusUpdate = async (discussionId: number, currentStatus: number, e: React.MouseEvent) => {
-    e.stopPropagation();
-  
-    if (updatingDiscussions.has(discussionId)) {
-      return;
+  const refreshDiscussionsAfterMessage = useCallback(async () => {
+    if (currentUser?.userId) {
+      await fetchDiscussions(currentUser.userId, selectedUser?.userId);
     }
+  }, [currentUser?.userId, selectedUser?.userId, fetchDiscussions]);
+
+  const handleStatusUpdate = useCallback(async (discussionId: number, currentStatus: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (updatingDiscussions.has(discussionId)) return;
   
     const nextStatus = getNextStatus(currentStatus);
-    
     setUpdatingDiscussions(prev => new Set([...prev, discussionId]));
   
-    const request: UpdateDiscussionStatusRequest = {
+    const request = {
       status: nextStatus,
       updatedByUserId: currentUser?.userId || 0
     };
@@ -584,28 +594,25 @@ const createDiscussion = async () => {
     try {
       const response = await fetch(`${baseUrl}/api/Chat/discussions/${discussionId}/status`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(request)
       });
   
       if (response.ok) {
-        setDiscussions(prev => 
-          prev.map(discussion => 
-            discussion.id === discussionId 
-              ? { ...discussion, status: nextStatus }
-              : discussion
-          )
-        );
-  
+        await refreshDiscussionsAfterMessage();
+        
         if (selectedDiscussion?.id === discussionId) {
-          setSelectedDiscussion(prev => 
-            prev ? { ...prev, status: nextStatus } : prev
-          );
+          const updatedDiscResponse = await fetch(`${baseUrl}/api/Chat/discussions/${currentUser?.userId}`);
+          if (updatedDiscResponse.ok) {
+            const allDiscussions: Discussion[] = await updatedDiscResponse.json();
+            const updatedDisc = allDiscussions.find(d => d.id === discussionId);
+            if (updatedDisc) {
+              setSelectedDiscussion(prev => 
+                prev ? { ...prev, status: nextStatus, updatedAt: updatedDisc.updatedAt } : prev
+              );
+            }
+          }
         }
-  
-        console.log(`Discussion ${discussionId} status updated to ${nextStatus}`);
       } else {
         console.error('Failed to update discussion status');
       }
@@ -618,7 +625,8 @@ const createDiscussion = async () => {
         return newSet;
       });
     }
-  };
+  }, [currentUser?.userId, selectedDiscussion, getNextStatus, refreshDiscussionsAfterMessage]);
+  
 
   const assignUsersToDiscussion = async (discussionId: number, userIds: number[]) => {
     if (!currentUser || userIds.length === 0) return;
@@ -664,12 +672,6 @@ const createDiscussion = async () => {
     }
   };
 
-  const refreshDiscussionsAfterMessage = useCallback(async () => {
-    if (currentUser?.userId) {
-        await fetchDiscussions(currentUser.userId, selectedUser?.userId);
-    }
-}, [currentUser?.userId, selectedUser?.userId, fetchDiscussions]);
-
   const handleAssignClick = () => {
     if (selectedDiscussionId && selectedUsers.size > 0) {
       assignUsersToDiscussion(selectedDiscussionId, Array.from(selectedUsers));
@@ -707,7 +709,6 @@ const createDiscussion = async () => {
     )
   ), [users, searchTerm]);
 
-  // Safely get associated client first_names for a discussion (supports clientIds[] or clientId)
   const getDiscussionClientFirstNames = useCallback((discussion: any): string[] => {
     try {
       const ids: number[] = Array.isArray(discussion?.clientIds)
@@ -721,7 +722,6 @@ const createDiscussion = async () => {
     }
   }, [clients]);
 
-  // Filter discussions by title or client first_name
   const filteredDiscussions = useMemo(() => {
     const q = discussionSearchTerm.trim().toLowerCase();
     if (!q) return discussions;
@@ -731,7 +731,7 @@ const createDiscussion = async () => {
       const inClient = clientNames.some(n => n.includes(q));
       return inTitle || inClient;
     });
-  }, [discussions, discussionSearchTerm, getDiscussionClientFirstNames]);
+  }, [discussions, discussionSearchTerm]);
 
   const handleFileUpload = async (file: File) => {
     if (!selectedDiscussion || !currentUser) {
@@ -789,6 +789,20 @@ const createDiscussion = async () => {
        
         const message = await response.json();
         console.log('File message saved successfully:', message);
+        if (selectedDiscussion && currentUser) {
+          try {
+            await fetch(`${baseUrl}/api/Chat/discussions/${selectedDiscussion.id}/update-timestamp`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                updatedByUserId: currentUser.userId,
+                updatedAt: message.createdAt || new Date().toISOString()
+              })
+            });
+          } catch (error) {
+            console.error('Error updating discussion timestamp:', error);
+          }
+        }
        
         setMessages(prev => sortByCreatedAtAsc([...(prev as Message[]), message as Message]));
        
@@ -838,6 +852,20 @@ const createDiscussion = async () => {
 
       if (response.ok) {
         const result = await response.json();
+        if (selectedDiscussion && currentUser) {
+          try {
+            await fetch(`${baseUrl}/api/Chat/discussions/${selectedDiscussion.id}/update-timestamp`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                updatedByUserId: currentUser.userId,
+                updatedAt: result.createdAt || new Date().toISOString()
+              })
+            });
+          } catch (error) {
+            console.error('Error updating discussion timestamp:', error);
+          }
+        }
         if (currentUser && result?.receiverId && Number(result.receiverId) === Number(currentUser.userId)) {
           const senderLabel = users.find(u => u.userId === result.senderId)?.kullaniciAdi || currentUser.kullaniciAdi;
           showToastForMessage({
@@ -1035,43 +1063,36 @@ const createDiscussion = async () => {
     fetchAssignedUsers(selectedDiscussionId);
   }, [showUsersDrawer, selectedDiscussionId, loadingAssignedUsers, assignedUsers, fetchAssignedUsers]);
 
-  const handleDiscussionSelect = async (discussion: Discussion) => {
+  const handleDiscussionSelect = useCallback(async (discussion: Discussion) => {
     try {
-        setSelectedDiscussion(discussion);
-        setCurrentView('chat');
+      setSelectedDiscussion(discussion);
+      setCurrentView('chat');
+      await fetchMessages(discussion.id);
 
-        await fetchMessages(discussion.id);
-
-        if (currentUser?.userId) {
-            await markDiscussionMessagesAsSeen(discussion.id, currentUser.userId);
-
-            setMessages(prev =>
-                prev.map(msg => {
-                    if (msg.receiverId === currentUser.userId && !msg.isSeen) {
-                        return {
-                            ...msg,
-                            isSeen: true,
-                            seenAt: new Date()
-                        } as any;
-                    }
-                    return msg;
-                })
-            );
-
-            setDiscussions(prevDiscussions => 
-                prevDiscussions.map(disc => 
-                    disc.id === discussion.id 
-                        ? { ...disc, unreadCount: 0 }
-                        : disc
-                )
-            );
-        }
+      if (currentUser?.userId) {
+        await markDiscussionMessagesAsSeen(discussion.id, currentUser.userId);
+        setMessages(prev =>
+          prev.map(msg => {
+            if (msg.receiverId === currentUser.userId && !msg.isSeen) {
+              return { ...msg, isSeen: true, seenAt: new Date() } as any;
+            }
+            return msg;
+          })
+        );
+        setDiscussions(prev =>
+          prev.map(disc =>
+            disc.id === discussion.id
+              ? { ...disc, unreadCount: 0 }
+              : disc
+          )
+        );
+      }
     } catch (error) {
-        console.error('Error in handleDiscussionSelect:', error);
-        setSelectedDiscussion(discussion);
-        setCurrentView('chat');
+      console.error('Error in handleDiscussionSelect:', error);
+      setSelectedDiscussion(discussion);
+      setCurrentView('chat');
     }
-  };
+  }, [currentUser, fetchMessages]);
 
   const startRecording = async () => {
     try {
@@ -1196,6 +1217,21 @@ const createDiscussion = async () => {
             fileName: result.fileName,
             mimeType: result.mimeType
         };
+
+        if (selectedDiscussion && currentUser) {
+          try {
+            await fetch(`${baseUrl}/api/Chat/discussions/${selectedDiscussion.id}/update-timestamp`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                updatedByUserId: currentUser.userId,
+                updatedAt: result.createdAt || new Date().toISOString()
+              })
+            });
+          } catch (error) {
+            console.error('Error updating discussion timestamp:', error);
+          }
+        }
 
       if (currentUser && newVoiceMessage.receiverId && Number(newVoiceMessage.receiverId) === Number(currentUser.userId)) {
           const senderLabel = users.find(u => u.userId === newVoiceMessage.senderId)?.kullaniciAdi || currentUser.kullaniciAdi;
@@ -1353,10 +1389,8 @@ const createDiscussion = async () => {
 
   useEffect(() => {
     if (!currentUser?.userId) return;
-
     let cancelled = false;
     const controller = new AbortController();
-
     const tick = async () => {
       try {
         const resp = await fetch(`${baseUrl}/api/Chat/discussions/${currentUser.userId}`, { signal: controller.signal });
@@ -1365,8 +1399,15 @@ const createDiscussion = async () => {
         const unique = Array.isArray(data)
           ? data.filter((d, i, self) => i === self.findIndex(x => x.id === d.id))
           : [];
-
-        const slice = unique.slice(0, 12);
+        
+        const sorted = unique.sort((a, b) => {
+          const dateA = new Date(a.updatedAt || a.createdAt).getTime();
+          const dateB = new Date(b.updatedAt || b.createdAt).getTime();
+          return dateB - dateA;
+        });
+        
+        const slice = sorted.slice(0, 12);
+        
         for (const d of slice) {
           if (cancelled) break;
           try {
@@ -1375,7 +1416,6 @@ const createDiscussion = async () => {
             const unread = Number(await cResp.json()) || 0;
             const prev = lastUnreadCountsRef.current.get(d.id) || 0;
             lastUnreadCountsRef.current.set(d.id, unread);
-
             if (unread > prev) {
               const mResp = await fetch(`${baseUrl}/api/Chat/discussions/${d.id}/messages?userId=${currentUser.userId}`, { signal: controller.signal });
               if (!mResp.ok) continue;
@@ -1403,7 +1443,6 @@ const createDiscussion = async () => {
       } catch {
       }
     };
-
     const interval = setInterval(tick, 12000);
     const init = setTimeout(tick, 800);
     return () => {
@@ -1545,6 +1584,22 @@ const createDiscussion = async () => {
   
       if (response.ok) {
         const result: MessageResponse = await response.json();
+        
+        if (selectedDiscussion && currentUser) {
+          try {
+            await fetch(`${baseUrl}/api/Chat/discussions/${selectedDiscussion.id}/update-timestamp`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                updatedByUserId: currentUser.userId,
+                updatedAt: result.createdAt || new Date().toISOString()
+              })
+            });
+          } catch (error) {
+            console.error('Error updating discussion timestamp:', error);
+          }
+        }
+        
         if (currentUser && result?.receiverId && Number(result.receiverId) === Number(currentUser.userId)) {
           const senderLabel = users.find(u => u.userId === result.senderId)?.kullaniciAdi || currentUser?.kullaniciAdi || 'New message';
           console.log("senderLabel", senderLabel);
@@ -1558,7 +1613,9 @@ const createDiscussion = async () => {
             duration: taskDrawerType === MessageType.Voice ? taskRecordingTime : undefined
           }, senderLabel);
         }
-        refreshDiscussionsAfterMessage();
+        
+        await refreshDiscussionsAfterMessage();
+        
         setMessages(prev => sortByCreatedAtAsc([...(prev as Message[]), {
           ...result,
           assignedUserIds: result.assignedUserIds || []
@@ -2047,7 +2104,17 @@ const createDiscussion = async () => {
                 return newSet;
               });
             };
-          
+
+            const handleEdit = (e: React.MouseEvent) => {
+              e.stopPropagation();
+              console.log('Edit discussion:', discussion.id);
+            };
+
+            const handleDelete = (e: React.MouseEvent) => {
+              e.stopPropagation();
+              console.log('Delete discussion:', discussion.id);
+            };
+
             return (
               <div
                 key={discussion.id}
@@ -2063,15 +2130,33 @@ const createDiscussion = async () => {
                     getStatusBackgroundColor(discussion.lastTaskStatus, false)
                   }`}
                 />
-                
+
                 <div className="p-4 sm:p-5 lg:p-6">
                   <div className="flex items-start justify-between mb-3 sm:mb-4">
                     <div className="flex-1 min-w-0 pr-4">
-                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-start justify-between gap-2">
                         <h3 className="text-base sm:text-lg lg:text-xl font-semibold text-gray-900 mb-2 line-clamp-2 group-hover:text-blue-600 transition-colors break-words">
                           {discussion.title}
                         </h3>
-                        
+                        {isAdmin && (
+                          <div className="flex items-center gap-2">
+                          <button
+                              onClick={handleEdit}
+                              className="p-2 rounded-lg text-gray-500 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                              title="Edit discussion"
+                            >
+                              <Edit3 className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={handleDelete}
+                              className="p-2 rounded-lg text-gray-500 hover:text-red-600 hover:bg-red-50 transition-colors"
+                              title="Delete discussion"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        )}
+                        </div> 
                         <div className="flex items-center gap-2 ml-2">
                           {unreadCount > 0 && (
                             <span
@@ -2095,10 +2180,11 @@ const createDiscussion = async () => {
                           )}
                         </div>
                       </div>
+                      
+                    
                       <p className="text-sm sm:text-base text-gray-600 line-clamp-2 sm:line-clamp-3 mb-3 leading-relaxed break-words">
                         {discussion.description}
                       </p>
-                    </div>
                   </div>
 
                   <div className="bg-gray-50 rounded-xl p-3 mb-4">
@@ -2115,7 +2201,7 @@ const createDiscussion = async () => {
                       </div>
                     </div>
                   </div>
-          
+
                   <div className="flex flex-wrap items-center gap-2 mb-4">
                     <span 
                       onClick={(e) => handleStatusUpdate(discussion.id, discussion.status || DiscussionStatus.NotStarted, e)}
@@ -2139,7 +2225,7 @@ const createDiscussion = async () => {
                         </>
                       )}
                     </span>
-          
+ 
                     {discussion.lastTaskStatus !== undefined && discussion.lastTaskStatus !== null && (
                       <span className={`inline-flex items-center px-2.5 sm:px-3 py-1.5 rounded-full text-xs font-medium text-white shadow-sm ${
                         discussion.lastTaskStatus === TaskStatusBg.Backlog ? 'bg-slate-500' :
@@ -2153,15 +2239,23 @@ const createDiscussion = async () => {
                       </span>
                     )}
                   </div>
-          
+
                   <div className="flex flex-col gap-3">
                     <div className="flex items-center text-xs text-gray-500">
                       <svg className="w-4 h-4 mr-1.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
-                      <span className="truncate">{new Date(discussion.createdAt).toLocaleString()}</span>
+                      <span className="truncate font-medium text-xs">Created: {new Date(discussion.createdAt).toLocaleString()}</span>
                     </div>
-          
+                    {discussion.updatedAt && discussion.updatedAt !== discussion.createdAt && (
+                    <div className="flex items-center text-blue-600">
+                      <svg className="w-4 h-4 mr-1.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                      <span className="truncate font-medium text-xs">Modified: {new Date(discussion.updatedAt).toLocaleString()}</span>
+                    </div>
+                    )}
+
                     <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
                       <button
                         onClick={(e) => {
@@ -2173,8 +2267,7 @@ const createDiscussion = async () => {
                       >
                         <ListChecksIcon size={12} className="mr-1 flex-shrink-0" />
                         <span className="text-xs">Reports</span>
-                      </button>
-          
+                      </button>          
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -2186,7 +2279,6 @@ const createDiscussion = async () => {
                         <DownloadIcon size={12} className="mr-1 flex-shrink-0" />
                         <span className="text-xs">Download</span>
                       </button>
-                      
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -2201,7 +2293,7 @@ const createDiscussion = async () => {
                     </div>
                   </div>
                 </div>
-          
+
                 {showUsersDrawer && selectedDiscussionId === discussion.id && (
                 <>
                   <div 
@@ -2459,19 +2551,57 @@ const createDiscussion = async () => {
                           updatedByUserId: currentUser.userId
                         })
                       });
-                      
+
                       if (response.ok) {
-                        const updatedMessage = await response.json();
-                        setMessages(prev => prev.map(msg => 
-                          msg.id === message.id ? { ...msg, ...updatedMessage } : msg
+                        const updatedTask = await response.json();
+                        const currentTimestamp = new Date().toISOString();
+                        
+                        if (selectedDiscussion && currentUser) {
+                          try {
+                            const timestampResponse = await fetch(`${baseUrl}/api/Chat/discussions/${selectedDiscussion.id}/update-timestamp`, {
+                              method: 'PUT',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({
+                                updatedByUserId: currentUser.userId,
+                                updatedAt: updatedTask.updatedAt || currentTimestamp
+                              })
+                            });
+                            
+                            if (!timestampResponse.ok) {
+                              console.error('Failed to update discussion timestamp:', await timestampResponse.text());
+                            }
+                          } catch (error) {
+                            console.error('Error updating discussion timestamp:', error);
+                          }
+                        }
+
+                        setMessages(prev => prev.map(msg =>
+                          msg.id === message.id ? {
+                            ...msg,
+                            taskStatus: updatedTask.status,
+                            updatedAt: updatedTask.updatedAt
+                          } : msg
                         ));
+
+                        if (currentUser?.userId) {
+                          await fetchDiscussions(currentUser.userId, selectedUser?.userId);
+                        }
+
+                        if (selectedDiscussion?.id) {
+                          setSelectedDiscussion(prev =>
+                            prev ? { ...prev, updatedAt: new Date(updatedTask.updatedAt || currentTimestamp) } : prev
+                          );
+                        }
+                      } else {
+                        console.error('Failed to update task status:', await response.text());
                       }
                     } catch (error) {
                       console.error('Error updating task status:', error);
                     }
                   }}
                   onPlayVoice={message.duration ? () => playTaskVoiceMessage(message.taskId || 0, message.id, message) : undefined}
-                  onDownloadFile={message.fileName ? () => downloadTaskFile(message.taskId || 0, message.id, message.fileName!) : undefined}                  isPlaying={playingVoiceId === message.id}
+                  onDownloadFile={message.fileName ? () => downloadTaskFile(message.taskId || 0, message.id, message.fileName!) : undefined}
+                  isPlaying={playingVoiceId === message.id}
                 />
                 ) : message.messageType === 3 ? (
                   <div className={`bg-blue-500 text-white rounded-2xl p-4`}>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, createContext, useContext, useRef } from 'react';
-import { X, MessageCircle, FileText, Mic, CheckCircle, Clock, MessageSquareCodeIcon } from 'lucide-react';
+import { X, MessageCircle, FileText, Mic, CheckCircle, Clock, BellDot, Bell, MessageSquareCode } from 'lucide-react';
 
 interface Toast {
   id: string;
@@ -39,7 +39,7 @@ const ToastNotification: React.FC<{ toast: Toast; onClose: (id: string, messageI
       case 'task':
         return <CheckCircle className="w-5 h-5 text-orange-500" />;
       case 'discussion':
-        return <MessageSquareCodeIcon className="w-5 h-5 text-orange-500" />;
+        return <MessageSquareCode className="w-5 h-5 text-indigo-500" />;
       default:
         return <MessageCircle className="w-5 h-5 text-blue-500" />;
     }
@@ -79,113 +79,148 @@ const ToastNotification: React.FC<{ toast: Toast; onClose: (id: string, messageI
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const truncateContent = (content: string, maxLength: number = 80) => {
+  const truncateContent = (content: string, maxLength: number = 60) => {
     return content.length > maxLength ? content.substring(0, maxLength) + '...' : content;
   };
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 p-4 mb-3 w-full max-w-sm sm:max-w-md transform transition-all duration-300 ease-out animate-slideIn backdrop-blur-sm bg-opacity-95 dark:bg-opacity-95">
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center space-x-2 flex-1 min-w-0">
-          <div className="flex-shrink-0">
+    <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 p-4 hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors duration-200 cursor-pointer">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start gap-3 flex-1 min-w-0">
+          <div className="flex-shrink-0 mt-1">
             {getIcon()}
           </div>
-          <div className="flex flex-col min-w-0">
-            <span className="text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wide">
-              {getTypeLabel()}
-            </span>
-            <div className="flex items-center space-x-1 text-xs text-gray-500 dark:text-gray-400">
-              <Clock className="w-3 h-3" />
-              <span>{formatTime(toast.createdAt)}</span>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wide">
+                {getTypeLabel()}
+              </span>
+              <div className="flex items-center space-x-1 text-xs text-gray-500 dark:text-gray-400">
+                <Clock className="w-3 h-3" />
+                <span>{formatTime(toast.createdAt)}</span>
+              </div>
+            </div>
+
+            <h4 className="font-semibold text-gray-900 dark:text-white text-sm mb-1 truncate">
+              {toast.senderName}
+            </h4>
+            
+            <div className="bg-gray-100 dark:bg-gray-700 rounded-lg p-2 mb-2">
+              {toast.type === 'voice' && toast.duration ? (
+                <div className="flex items-center space-x-2">
+                  <div className="w-2 h-2 bg-purple-500 rounded-full animate-pulse"></div>
+                  <span className="text-xs text-gray-700 dark:text-gray-300">
+                    Voice message ({formatDuration(toast.duration)})
+                  </span>
+                </div>
+              ) : (
+                <p className="text-xs text-gray-700 dark:text-gray-300 break-words">
+                  {truncateContent(toast.content)}
+                </p>
+              )}
             </div>
           </div>
         </div>
+
         <button
-          onClick={() => onClose(toast.id, toast.messageId)}
-          className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors duration-200 group flex-shrink-0"
+          onClick={(e) => {
+            e.stopPropagation();
+            onClose(toast.id, toast.messageId);
+          }}
+          className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-full transition-colors duration-200 flex-shrink-0"
         >
-          <X className="w-4 h-4 text-gray-400 group-hover:text-gray-600 dark:group-hover:text-gray-200" />
+          <X className="w-4 h-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200" />
         </button>
       </div>
-
-      <div className="flex items-center mb-3">
-        <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white text-sm font-bold mr-3 flex-shrink-0">
-          {toast.senderName.charAt(0).toUpperCase()}
-        </div>
-        <div className="min-w-0 flex-1">
-          <h4 className="font-semibold text-gray-900 dark:text-white text-sm truncate">
-            {toast.senderName}
-          </h4>
-          <p className="text-xs text-gray-500 dark:text-gray-400">
-            {toast.senderName} sent you a {toast.type === 'task' ? 'task' : toast.type === 'voice' ? 'voice message' : toast.type === 'file' ? 'file' : 'message'}
-          </p>
-        </div>
-      </div>
-
-      <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-3">
-        {toast.type === 'voice' && toast.duration ? (
-          <div className="flex items-center space-x-2">
-            <div className="flex-1">
-              <div className="flex items-center space-x-2">
-                <div className="w-2 h-2 bg-purple-500 rounded-full animate-pulse"></div>
-                <span className="text-sm text-gray-700 dark:text-gray-300">Voice message</span>
-              </div>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                Duration: {formatDuration(toast.duration)}
-              </p>
-            </div>
-          </div>
-        ) : (
-          <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed break-words">
-            {truncateContent(toast.content)}
-          </p>
-        )}
-      </div>
-
-      {toast.type === 'file' && (
-        <div className="mt-2 flex items-center space-x-1 text-xs text-green-600 dark:text-green-400">
-          <FileText className="w-3 h-3" />
-          <span>File attachment included</span>
-        </div>
-      )}
-      
-      {toast.type === 'task' && (
-        <div className="mt-2 flex items-center space-x-1 text-xs text-orange-600 dark:text-orange-400">
-          <CheckCircle className="w-3 h-3" />
-          <span>Task requires your attention</span>
-        </div>
-      )}
-      {toast.type === 'discussion' && (
-        <div className="mt-2 flex items-center space-x-1 text-xs text-orange-600 dark:text-orange-400">
-          <MessageSquareCodeIcon className="w-3 h-3" />
-          <span>New discussion created by {toast.senderName}</span>
-        </div>
-      )}
     </div>
   );
 };
 
-const ToastContainer: React.FC<{ toasts: Toast[]; onRemoveToast: (id: string, messageId?: number) => void }> = ({ 
-  toasts, 
-  onRemoveToast 
-}) => {
-  if (toasts.length === 0) return null;
+const FloatingNotificationMenu: React.FC<{ 
+  toasts: Toast[]; 
+  isOpen: boolean;
+  onToggle: () => void;
+  onRemoveToast: (id: string, messageId?: number) => void;
+  onClearAll: () => void;
+}> = ({ toasts, isOpen, onToggle, onRemoveToast, onClearAll }) => {
+  const hasNotifications = toasts.length > 0;
+  if (!hasNotifications) return null;
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 flex flex-col-reverse space-y-reverse space-y-2 max-h-screen overflow-hidden">
-      {toasts.map((toast) => (
-        <ToastNotification
-          key={toast.id}
-          toast={toast}
-          onClose={onRemoveToast}
-        />
-      ))}
+    <div className="fixed bottom-6 right-6 z-50">
+      {isOpen && (
+        <div className="absolute bottom-20 right-0 w-96 max-w-[calc(100vw-3rem)] mb-2 animate-slideUp">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden max-h-[80vh] flex flex-col">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-blue-500 to-purple-500 p-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <BellDot className="w-5 h-5 text-white" />
+                <h3 className="text-white font-semibold">Notifications</h3>
+                <span className="bg-white text-blue-600 text-xs font-bold px-2 py-0.5 rounded-full">
+                  {toasts.length}
+                </span>
+              </div>
+              {toasts.length > 0 && (
+                <button
+                  onClick={onClearAll}
+                  className="text-white text-xs hover:bg-white/20 px-3 py-1 rounded-full transition-colors duration-200"
+                >
+                  Clear All
+                </button>
+              )}
+            </div>
+
+            {/* Notifications List */}
+            <div className="overflow-y-auto flex-1">
+              {toasts.length === 0 ? (
+                <div className="p-8 text-center">
+                  <Bell className="w-12 h-12 text-gray-300 dark:text-gray-600 mx-auto mb-3" />
+                  <p className="text-gray-500 dark:text-gray-400 text-sm">
+                    No new notifications
+                  </p>
+                </div>
+              ) : (
+                toasts.map((toast) => (
+                  <ToastNotification
+                    key={toast.id}
+                    toast={toast}
+                    onClose={onRemoveToast}
+                  />
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <button
+        onClick={onToggle}
+        className={`w-14 h-14 rounded-full shadow-2xl flex items-center justify-center transition-all duration-300 transform hover:scale-110 ${
+          isOpen 
+            ? 'bg-gray-700 dark:bg-gray-600' 
+            : 'bg-gradient-to-r from-blue-500 to-purple-500'
+        }`}
+      >
+        {isOpen ? (
+          <X className="w-6 h-6 text-white" />
+        ) : hasNotifications ? (
+          <div className="relative">
+            <BellDot className="w-6 h-6 text-white animate-bounce" />
+            <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center">
+              {toasts.length > 9 ? '9+' : toasts.length}
+            </span>
+          </div>
+        ) : (
+          <Bell className="w-6 h-6 text-white" />
+        )}
+      </button>
     </div>
   );
 };
 
 export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const [isOpen, setIsOpen] = useState(false);
 
   const getTodayKey = () => {
     const d = new Date();
@@ -194,10 +229,11 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const day = String(d.getDate()).padStart(2, '0');
     return `dismissedMessageIds:${y}-${m}-${day}`;
   };
+  
   const [todayKey] = useState<string>(getTodayKey());
   const [dismissedIds, setDismissedIds] = useState<Set<number>>(() => {
     try {
-      const raw = localStorage.getItem(todayKey);
+      const raw = window.localStorage?.getItem(todayKey);
       if (!raw) return new Set<number>();
       const arr = JSON.parse(raw) as number[];
       return new Set(arr);
@@ -210,7 +246,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   useEffect(() => {
     try {
-      localStorage.setItem(todayKey, JSON.stringify(Array.from(dismissedIds)));
+      window.localStorage?.setItem(todayKey, JSON.stringify(Array.from(dismissedIds)));
     } catch {}
   }, [dismissedIds, todayKey]);
 
@@ -233,7 +269,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       processedMessageIds.current.add(toastData.messageId);
     }
     
-    setToasts(prev => [...prev, newToast]);
+    setToasts(prev => [newToast, ...prev]);
   };
 
   const removeToast = (id: string) => {
@@ -247,24 +283,40 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
+  const handleClearAll = () => {
+    toasts.forEach(toast => {
+      if (toast.messageId) {
+        setDismissedIds(prev => new Set(prev).add(toast.messageId!));
+      }
+    });
+    setToasts([]);
+    setIsOpen(false);
+  };
+
   return (
     <ToastContext.Provider value={{ addToast, removeToast, removeToastPersist }}>
       {children}
-      <ToastContainer toasts={toasts} onRemoveToast={removeToastPersist} />
+      <FloatingNotificationMenu
+        toasts={toasts}
+        isOpen={isOpen}
+        onToggle={() => setIsOpen(!isOpen)}
+        onRemoveToast={removeToastPersist}
+        onClearAll={handleClearAll}
+      />
       <style>{`
-        @keyframes slideIn {
+        @keyframes slideUp {
           from {
-            transform: translateX(-100%);
+            transform: translateY(20px);
             opacity: 0;
           }
           to {
-            transform: translateX(0);
+            transform: translateY(0);
             opacity: 1;
           }
         }
         
-        .animate-slideIn {
-          animation: slideIn 0.3s ease-out;
+        .animate-slideUp {
+          animation: slideUp 0.3s ease-out;
         }
       `}</style>
     </ToastContext.Provider>
@@ -285,7 +337,7 @@ export const useMessageToast = (currentUser: any) => {
     try {
       const d = new Date();
       const key = `dismissedMessageIds:${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-      const raw = localStorage.getItem(key);
+      const raw = window.localStorage?.getItem(key);
       if (raw) {
         const ids = new Set<number>((JSON.parse(raw) as number[]).filter((n) => typeof n === 'number'));
         if (typeof message.id === 'number' && ids.has(message.id)) {
