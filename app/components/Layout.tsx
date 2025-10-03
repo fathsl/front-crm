@@ -15,7 +15,6 @@ export default function Layout() {
   const toggleCollapsed = () => setCollapsed(prev => !prev);
 
   const handleNavClick = (id?: string) => {
-    // Close sidebar on small screens after navigation, or when explicitly asked to close
     if (typeof window !== 'undefined' && window.innerWidth < 1024) {
       setSidebarOpen(false);
       return;
@@ -25,8 +24,7 @@ export default function Layout() {
     }
   };
 
-  // Ensure sidebar is visible on desktop after navigation
-  useEffect(() => {
+useEffect(() => {
     if (typeof window !== 'undefined' && window.innerWidth >= 1024) {
       setSidebarOpen(true);
     }
@@ -49,8 +47,7 @@ export default function Layout() {
         />
       )}
       
-      {/* Main content area */}
-      <div className={`transition-all duration-300 ease-in-out pt-16 ${sidebarOpen ? (collapsed ? 'lg:ml-20' : 'lg:ml-64') : 'lg:ml-0'}`}>
+      <div className={`transition-all duration-300 ease-in-out pt-16 min-h-screen ${sidebarOpen ? (collapsed ? 'lg:ml-20' : 'lg:ml-64') : 'lg:ml-0'}`}>
         <div className="p-6">
           <Outlet />
         </div>

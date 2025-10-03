@@ -55,8 +55,8 @@ export interface Task {
     SortOrder?: number;
     createdByUserId?: number;
     updatedByUserId?: number | null;
-    createdAt?: string | Date;
-    updatedAt?: string | Date;
+    createdAt?: Date;
+    updatedAt?: Date;
     clientIds: number[];
     projectIds: number[];
     assignedUsers?: User[];

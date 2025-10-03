@@ -316,7 +316,7 @@ const ChatApplication: React.FC = () => {
       setLoading(false);
     }
   };
-  
+
   const fetchProjects = async () => {
         try {
           const response = await fetch(`${baseUrl}/api/Project`);
@@ -455,11 +455,9 @@ const ChatApplication: React.FC = () => {
           .sort((a, b) => {
             const dateA = new Date(a.updatedAt || a.createdAt).getTime();
             const dateB = new Date(b.updatedAt || b.createdAt).getTime();
-            console.log(`Sorting: ${a.title} (updatedAt: ${a.updatedAt}, createdAt: ${a.createdAt}) vs ${b.title} (updatedAt: ${b.updatedAt}, createdAt: ${b.createdAt})`);
             return dateB - dateA;
           });
   
-        console.log('Sorted discussions:', sortedDiscussions);
         setDiscussions(sortedDiscussions as any);
         setUnreadCounts((prev) => ({ ...prev, ...unreadMap }));
         setUnseenCounts((prev) => ({ ...prev, ...unseenMap }));
@@ -926,6 +924,20 @@ const ChatApplication: React.FC = () => {
     }
   };
 
+  const deleteDiscussion = async (discussionId: number) => {
+    try {
+      const response = await fetch(`${baseUrl}/api/Chat/discussions/${discussionId}`, {
+        method: 'DELETE'
+      });
+
+      if (response.ok) {
+        setDiscussions(prev => prev.filter(msg => msg.id !== discussionId));
+      }
+    } catch (error) {
+      console.error('Error deleting discussion:', error);
+    }
+  };
+
   const markDiscussionMessagesAsSeen = async (discussionId: number, userId: number) => {
     try {
         const response = await fetch(`${baseUrl}/api/Chat/discussions/${discussionId}/mark-all-seen?userId=${userId}`, {
@@ -1068,9 +1080,31 @@ const ChatApplication: React.FC = () => {
       setSelectedDiscussion(discussion);
       setCurrentView('chat');
       await fetchMessages(discussion.id);
-
+      
       if (currentUser?.userId) {
         await markDiscussionMessagesAsSeen(discussion.id, currentUser.userId);
+        
+        try {
+          const response = await fetch(
+            `${baseUrl}/api/Chat/discussions/${discussion.id}/mark-seen`,
+            {
+              method: 'PUT',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                userId: currentUser.userId
+              })
+            }
+          );
+          
+          if (response.ok) {
+            console.log('Discussion marked as seen');
+          }
+        } catch (error) {
+          console.error('Error marking discussion as seen:', error);
+        }
+        
         setMessages(prev =>
           prev.map(msg => {
             if (msg.receiverId === currentUser.userId && !msg.isSeen) {
@@ -1079,10 +1113,11 @@ const ChatApplication: React.FC = () => {
             return msg;
           })
         );
+        
         setDiscussions(prev =>
           prev.map(disc =>
             disc.id === discussion.id
-              ? { ...disc, unreadCount: 0 }
+              ? { ...disc, unreadCount: 0, isSeen: true }
               : disc
           )
         );
@@ -2112,7 +2147,8 @@ const ChatApplication: React.FC = () => {
 
             const handleDelete = (e: React.MouseEvent) => {
               e.stopPropagation();
-              console.log('Delete discussion:', discussion.id);
+              deleteDiscussion(discussion.id);
+              refreshDiscussionsAfterMessage();
             };
 
             return (
@@ -2140,13 +2176,13 @@ const ChatApplication: React.FC = () => {
                         </h3>
                         {isAdmin && (
                           <div className="flex items-center gap-2">
-                          <button
+                          {/* <button
                               onClick={handleEdit}
                               className="p-2 rounded-lg text-gray-500 hover:text-blue-600 hover:bg-blue-50 transition-colors"
                               title="Edit discussion"
                             >
                               <Edit3 className="w-4 h-4" />
-                            </button>
+                            </button> */}
                             <button
                               onClick={handleDelete}
                               className="p-2 rounded-lg text-gray-500 hover:text-red-600 hover:bg-red-50 transition-colors"
@@ -2180,8 +2216,7 @@ const ChatApplication: React.FC = () => {
                           )}
                         </div>
                       </div>
-                      
-                    
+
                       <p className="text-sm sm:text-base text-gray-600 line-clamp-2 sm:line-clamp-3 mb-3 leading-relaxed break-words">
                         {discussion.description}
                       </p>

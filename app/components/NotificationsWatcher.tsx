@@ -45,7 +45,14 @@ const NotificationsWatcher: React.FC = () => {
       try {
         const resp = await fetch(`${baseUrl}/api/Chat/discussions/${currentUser.userId}`, { signal: controller.signal });
         if (!resp.ok) return;
-        const discussions: Array<{ id: number; senderId?: number; receiverId?: number; title?: string; createdAt?: string | Date }> = await resp.json();
+        const discussions: Array<{ 
+          id: number; 
+          senderId?: number; 
+          receiverId?: number; 
+          title?: string; 
+          createdAt?: string | Date;
+          isSeen?: boolean;
+        }> = await resp.json();
         const unique = Array.isArray(discussions)
           ? discussions.filter((d, i, self) => i === self.findIndex(x => x.id === d.id))
           : [];
@@ -55,7 +62,9 @@ const NotificationsWatcher: React.FC = () => {
           if (!d || typeof d.id !== 'number') continue;
           if (knownDiscussionIdsRef.current.has(d.id)) continue;
           knownDiscussionIdsRef.current.add(d.id);
-          if (Number(d.receiverId) === Number(currentUser.userId)) {
+          const isNewDiscussion = !knownDiscussionIdsRef.current.has(d.id);
+          knownDiscussionIdsRef.current.add(d.id);
+          if (isNewDiscussion && Number(d.receiverId) === Number(currentUser.userId) && !d.isSeen) {
             const senderName = await resolveSenderName(d.senderId, undefined);
             showToastForMessage({
               ...d,

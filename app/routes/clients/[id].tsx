@@ -1,7 +1,7 @@
 import { useAtomValue } from "jotai";
 import { Calendar, Check, CheckCircle, ChevronDown, Circle, Clock, Eye, FileIcon, Folder, Loader2, Mail, MapPin, Mic, MicOff, Pause, Phone, Play, Plus, Save, Search, UploadIcon, UserIcon, X } from "lucide-react";
 import { useEffect, useRef, useState, useCallback } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { ProjectStatus, type Client, type Project, type Resource, type Task } from "~/help";
 import type { TaskPriority } from "~/types/task";
 import { userAtom } from "~/utils/userAtom";
@@ -158,56 +158,6 @@ const ClientDetailsPage = () => {
           });
       }
     }
-  };
-
-  const startRecording = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
-      const audioChunks: BlobPart[] = [];
-
-      mediaRecorder.ondataavailable = (event: BlobEvent) => {
-        if (event.data.size > 0) {
-          audioChunks.push(event.data);
-        }
-      };
-
-      mediaRecorder.onstop = () => {
-        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-        setRecordedAudio(audioBlob);
-        setSelectedFile(null);
-        stream.getTracks().forEach(track => track.stop());
-      };
-
-      mediaRecorderRef.current = mediaRecorder;
-      mediaRecorder.start();
-      setIsRecording(true);
-      setRecordingTime(0);
-
-      recordingIntervalRef.current = setInterval(() => {
-        setRecordingTime(prev => prev + 1);
-      }, 1000);
-    } catch (error) {
-      console.error('Error starting recording:', error);
-      alert('Could not access microphone');
-    }
-  };
-
-  const stopRecording = useCallback(() => {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
-      if (recordingIntervalRef.current) {
-        clearInterval(recordingIntervalRef.current);
-        recordingIntervalRef.current = null;
-      }
-    }
-  }, [isRecording]);
-
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
   const getStatusColor = (status: string) => {
@@ -670,11 +620,9 @@ const ClientDetailsPage = () => {
               className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
             >
               <Plus className="h-4 w-4" />
-              <span>Add Resource</span>
+              <span className="text-sm hidden sm:block">Add Resource</span>
             </button>
           </div>
-
-          
           {resources.length === 0 ? (
             <div className="text-center py-8">
               <FileIcon className="h-12 w-12 text-gray-400 mx-auto mb-3" />
@@ -866,9 +814,9 @@ const ClientDetailsPage = () => {
                     </button>
                   </div>
 
-                  <div className="text-center text-sm text-gray-500">OR</div>
+                  {/* <div className="text-center text-sm text-gray-500">OR</div> */}
 
-                  <div>
+                  {/* <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">Record Voice Note</label>
                     <div className="space-y-3">
                       <button
@@ -904,7 +852,7 @@ const ClientDetailsPage = () => {
                         </div>
                       )}
                     </div>
-                  </div>
+                  </div> */}
                 </div>
               </div>
 

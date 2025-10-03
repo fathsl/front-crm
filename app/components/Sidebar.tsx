@@ -1,4 +1,4 @@
-import { BarChart3, CheckSquare2Icon, LogOut, MessageCircle, MessageSquare, UsersIcon, UsersRoundIcon, X, ChevronsLeft, ChevronsRight, Server, Wifi } from 'lucide-react';
+import { BarChart3, CheckSquare2Icon, LogOut, MessageCircle, MessageSquare, UsersIcon, UsersRoundIcon, X, ChevronsLeft, ChevronsRight, Server, Wifi, MapPinMinusInside, MapIcon, Instagram } from 'lucide-react';
 import { type FC } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useLocation } from 'react-router';
@@ -45,6 +45,7 @@ const Sidebar: FC<SidebarProps> = ({
     { id: 'users', label: 'Users', icon: UsersIcon, category: 'Tools', href: '/users' },
     { id: 'meetings', label: 'Meetings', icon: MessageSquare, category: 'Communication', href: '/meetings' },
     { id: 'chats', label: 'Chats', icon: MessageCircle, category: 'Communication', href: '/chats' },
+    /* { id: 'media', label: 'Social Media', icon:Instagram, category: 'Communication', href: '/media' }, */
     /* { id: 'bulk-mail', label: 'Bulk Mail', icon: Mail, category: 'Communication', href: '/mail' }, */
   ];
 
