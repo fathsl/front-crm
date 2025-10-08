@@ -6,7 +6,7 @@ import type { FilteredOrderDto, OrderFilterDto, ReportingData } from "~/help";
 import { json } from "@remix-run/node";
 export async function loader({ request }: LoaderFunctionArgs): Promise<Response> {
     const baseUrl = process.env.API_BASE_URL || "https://api-crm-tegd.onrender.com";
-    
+
     const emptyData: ReportingData = {
       productCategories: [],
       components: [],
@@ -17,7 +17,7 @@ export async function loader({ request }: LoaderFunctionArgs): Promise<Response>
       orders: [],
       filterOptions: null
     };
-    
+
     try {
       const [
         productCategoriesRes,
@@ -44,7 +44,7 @@ export async function loader({ request }: LoaderFunctionArgs): Promise<Response>
         console.error('One or more API requests failed');
         return json(emptyData);
       }
-  
+
       const data: ReportingData = {
         productCategories: await productCategoriesRes.json(),
         components: await componentsRes.json(),
@@ -55,7 +55,7 @@ export async function loader({ request }: LoaderFunctionArgs): Promise<Response>
         orders: await ordersRes.json(),
         filterOptions: await filterOptionsRes.json()
       };
-  
+
       return json(data);
     } catch (error) {
       console.error('Error fetching reporting data:', error);
@@ -124,7 +124,6 @@ export default function Reporting() {
   return (
     <>
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
-        {/* Header - Mobile Optimized */}
         <div className="bg-white shadow-sm border-b">
             <div className="max-w-7xl mx-auto px-4 py-4">
             <h1 className="text-xl font-bold text-gray-900 sm:text-2xl md:text-3xl">
@@ -137,7 +136,6 @@ export default function Reporting() {
         </div>
 
         <div className="max-w-7xl mx-auto px-4 py-4 sm:px-6 sm:py-6">
-            {/* Mobile-first Navigation */}
             <div className="mb-4 sm:mb-6">
             <div className="sm:hidden">
                 <select
@@ -173,7 +171,6 @@ export default function Reporting() {
             </div>
             </div>
 
-            {/* Search Bar - Full width on mobile */}
             {(activeSection === "customers" || activeSection === "orders") && (
             <div className="mb-4">
                 <div className="relative">
@@ -191,7 +188,6 @@ export default function Reporting() {
             </div>
             )}
 
-            {/* Overview Section - Card Grid */}
             {activeSection === "overview" && (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 {[
@@ -233,7 +229,6 @@ export default function Reporting() {
             </div>
             )}
 
-            {/* Products Section - Card List */}
             {activeSection === "products" && (
             <div className="space-y-3">
                 <h3 className="text-lg font-medium text-gray-900 px-1">Product Categories</h3>
@@ -261,7 +256,6 @@ export default function Reporting() {
             </div>
             )}
 
-            {/* Components Section - Card List */}
             {activeSection === "components" && (
             <div className="space-y-3">
                 <h3 className="text-lg font-medium text-gray-900 px-1">Components</h3>
@@ -290,7 +284,6 @@ export default function Reporting() {
             </div>
             )}
 
-            {/* Customers Section - Card List */}
             {activeSection === "customers" && (
             <div className="space-y-3">
                 <div className="flex justify-between items-center px-1">
@@ -326,7 +319,6 @@ export default function Reporting() {
             </div>
             )}
 
-            {/* Purchases Section - Card List */}
             {activeSection === "purchases" && (
             <div className="space-y-3">
                 <h3 className="text-lg font-medium text-gray-900 px-1">Customer Purchases</h3>
@@ -357,7 +349,6 @@ export default function Reporting() {
             </div>
             )}
 
-            {/* Deliveries Section - Card Grid */}
             {activeSection === "deliveries" && (
             <div className="space-y-6">
                 <div className="space-y-3">
@@ -400,7 +391,6 @@ export default function Reporting() {
             </div>
             )}
 
-            {/* Orders Section - Card List */}
             {activeSection === "orders" && (
             <div className="space-y-3">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -419,11 +409,9 @@ export default function Reporting() {
                 </div>
               </div>
 
-              {/* Filter Panel */}
               {showFilters && (
                 <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {/* Order Number */}
                     <div>
                       <label className="block text-sm font-medium text-gray-700">
                         Order Number
@@ -436,7 +424,6 @@ export default function Reporting() {
                       />
                     </div>
 
-                    {/* Customer Name */}
                     <div>
                       <label className="block text-sm font-medium text-gray-700">
                         Customer Name
@@ -449,7 +436,6 @@ export default function Reporting() {
                       />
                     </div>
 
-                    {/* Country */}
                     <div>
                       <label className="block text-sm font-medium text-gray-700">
                         Country

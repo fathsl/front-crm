@@ -1,9 +1,9 @@
 import React, { useState, useEffect, createContext, useContext, useRef } from 'react';
-import { X, MessageCircle, FileText, Mic, CheckCircle, Clock, BellDot, Bell, MessageSquareCode } from 'lucide-react';
+import { X, MessageCircle, FileText, Mic, CheckCircle, Clock, BellDot, Bell, MessageSquareCode, RefreshCw } from 'lucide-react';
 
 interface Toast {
   id: string;
-  type: 'message' | 'file' | 'voice' | 'task' | 'discussion';
+  type: 'message' | 'file' | 'voice' | 'task' | 'discussion' | 'status';
   senderName: string;
   content: string;
   createdAt: Date;
@@ -40,6 +40,8 @@ const ToastNotification: React.FC<{ toast: Toast; onClose: (id: string, messageI
         return <CheckCircle className="w-5 h-5 text-orange-500" />;
       case 'discussion':
         return <MessageSquareCode className="w-5 h-5 text-indigo-500" />;
+      case 'status':
+          return <RefreshCw className="w-5 h-5 text-yellow-500" />;
       default:
         return <MessageCircle className="w-5 h-5 text-blue-500" />;
     }
@@ -57,6 +59,8 @@ const ToastNotification: React.FC<{ toast: Toast; onClose: (id: string, messageI
         return 'Task Assigned';
       case 'discussion':
         return 'New Discussion';
+      case 'status':
+        return 'Discussion Status Updated';
       default:
         return 'New Message';
     }
@@ -368,6 +372,10 @@ export const useMessageToast = (currentUser: any) => {
       case 5:
         toastType = 'discussion';
         content = message.title || 'New discussion created';
+        break;
+      case 6:
+        toastType = 'status';
+        content = message.content || 'Discussion status updated';
         break;
       default:
         toastType = 'message';

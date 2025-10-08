@@ -1,328 +1,290 @@
-import { ChevronRight, Clock, MessageCircle,Search, Users } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
-import type { Chat, Message, User } from "~/help";
-import { ChatService } from "~/services/chatService";
+import { useAtomValue } from "jotai";
+import { Building2, Calendar, ClockIcon, Mail, MapPin, PlusIcon, SearchIcon, UserIcon, UsersIcon, Video } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
+import MeetingModal from "~/components/MeetingModal";
+import type { Client, Meeting, User } from "~/help";
+import { userAtom } from "~/utils/userAtom";
 
-const ChatPage = () => {
-    const [users, setUsers] = useState<User[]>([]);
-    const [filteredUsers, setFilteredUsers] = useState<User[]>([]);
-    const [chatRooms, setChatRooms] = useState<Chat[]>([]);
-    const [selectedUser, setSelectedUser] = useState<User | null>(null);
-    const [selectedChat, setSelectedChat] = useState<string | null>(null);
-    const [messages, setMessages] = useState<Message[]>([]);
-    const [message, setMessage] = useState('');
-    const [searchTerm, setSearchTerm] = useState('');
-    const [loading, setLoading] = useState(false);
-    const [chatLoading, setChatLoading] = useState(false);
-    const [currentUser, setCurrentUser] = useState({ userId: 1, fullName: 'Current User' });
-    const [activeTab, setActiveTab] = useState('rooms');
-    const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-    const [roomsLoading, setRoomsLoading] = useState(false);
-    const baseUrl = "https://api-crm-tegd.onrender.com";
-  
-    const fetchUsers = async () => {
+const MeetingsPage = () => {
+  const { t } = useTranslation();
+  const [users, setUsers] = useState<User[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [meetings, setMeetings] = useState<Meeting[]>([]);
+  const [filteredMeetings, setFilteredMeetings] = useState<Meeting[]>([]);
+  const [searchTerm, setSearchTerm] = useState(''); 
+  const [loading, setLoading] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+  const [error, setError] = useState('');
+  const currentUser = useAtomValue(userAtom) as unknown as User;
+  const baseUrl = "https://api-crm-tegd.onrender.com";
+
+  const fetchUsers = async () => {
       try {
         setLoading(true);
         const response = await fetch(`${baseUrl}/api/User`);
         if (response.ok) {
           const data = await response.json();
-          setUsers(data);
-          setFilteredUsers(data);
-          console.log("users", data);
+          const filteredUsers = data.filter((user: User) => user.userId !== currentUser?.userId).sort((a: User, b: User) => a.kullaniciAdi.localeCompare(b.kullaniciAdi));
+          setUsers(filteredUsers);
+          console.log("users", filteredUsers);
         } else {
           throw new Error('Failed to fetch users');
         }
       } catch (err) {
+        setError('Kullanıcılar yüklenirken hata oluştu');
         console.error('Error fetching users:', err);
       } finally {
         setLoading(false);
       }
-    };
-  
-    const loadChatRooms = useCallback(() => {
-        if (!currentUser?.userId) return;
-    
-        setRoomsLoading(true);
-        const unsubscribe = ChatService.subscribeToUserChats(
-          currentUser.userId.toString(),
-          (chats) => {
-            const enrichedChats = chats.map(chat => {
-              const otherParticipant = chat.participants.find((p:number) => p !== currentUser.userId);
-              const user = users.find(u => u.userId === otherParticipant);
-              return {
-                ...chat,
-                user: user || { userId: otherParticipant, fullName: 'Unknown User', kullaniciAdi: 'unknown' },
-                unreadCount: chat.unreadCount || 0
-              };
-            });
-            setChatRooms(enrichedChats);
-            setRoomsLoading(false);
-          }
-        );
-    
-        return unsubscribe;
-      }, [currentUser?.userId, users]);
-    
-      const openChatDrawer = (user:User) => {
-        setSelectedUser(user);
-        setIsDrawerOpen(true);
-      };
+  };
 
-    const getInitials = (fullName: any) => {
-      if (!fullName) return 'U';
-      const names = fullName.trim().split(' ');
-      if (names.length === 1) {
-        return names[0][0].toUpperCase();
+  const fetchClients = async () => {
+      try {
+        setLoading(true);
+        const response = await fetch(`${baseUrl}/api/Clients`);
+        if (response.ok) {
+          const data = await response.json();
+          setClients(data);
+        } else {
+          throw new Error('Failed to fetch clients');
+        }
+      } catch (err) {
+        setError('Kullanıcılar yüklenirken hata oluştu');
+        console.error('Error fetching clients:', err);
+      } finally {
+        setLoading(false);
       }
-      return `${names[0][0]}${names[names.length - 1][0]}`.toUpperCase();
-    };
-  
-    const formatTimestamp = (timestamp: Date) => {
-      if (!timestamp) return '';
-      const date = new Date(timestamp);
-      const now = new Date();
-      const diffInHours = Math.abs(now.getTime() - date.getTime()) / 36e5;
-      
-      if (diffInHours < 24) {
-        return date.toLocaleTimeString('tr-TR', { 
-          hour: '2-digit', 
-          minute: '2-digit' 
-        });
+  };
+
+  const fetchMeetings = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch(`${baseUrl}/api/Meeting`);
+      if (response.ok) {
+        const data = await response.json();
+        setMeetings(data);
       } else {
-        return date.toLocaleDateString('tr-TR', { 
-          day: '2-digit',
-          month: '2-digit'
-        });
+        throw new Error('Failed to fetch clients');
       }
+    } catch (err) {
+      setError('Kullanıcılar yüklenirken hata oluştu');
+      console.error('Error fetching clients:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSearch = (value: string) => {
+    setSearchTerm(value);
+    if (!value.trim()) {
+      setFilteredMeetings(meetings);
+      return;
+    }
+
+    const searchLower = value.toLowerCase();
+    const filtered = meetings.filter(meeting => 
+      meeting.title?.toLowerCase().includes(searchLower) ||
+      meeting.clientName?.toLowerCase().includes(searchLower) ||
+      meeting.clientCompanyName?.toLowerCase().includes(searchLower) ||
+      meeting.organizerName?.toLowerCase().includes(searchLower) ||
+      meeting.location?.toLowerCase().includes(searchLower) ||
+      meeting.status?.toLowerCase().includes(searchLower)
+    );
+    setFilteredMeetings(filtered);
+  };
+
+  useEffect(() => {
+    fetchUsers();
+    fetchClients();
+    fetchMeetings();
+  }, []);
+
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('tr-TR', { 
+      day: '2-digit', 
+      month: 'long', 
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  const getStatusBadge = (status: string) => {
+    const statusColors: Record<string, string> = {
+      'Planned': 'bg-blue-100 text-blue-800',
+      'Completed': 'bg-green-100 text-green-800',
+      'Cancelled': 'bg-red-100 text-red-800',
+      'In Progress': 'bg-yellow-100 text-yellow-800'
     };
+    return statusColors[status] || 'bg-gray-100 text-gray-800';
+  };
+
+  const getMeetingTypeIcon = (type: string) => {
+    switch (type) {
+      case 'Online':
+        return <Video className="h-4 w-4" />;
+      case 'In-Person':
+        return <MapPin className="h-4 w-4" />;
+      default:
+        return <Calendar className="h-4 w-4" />;
+    }
+  };
   
-    useEffect(() => {
-      if (!searchTerm) {
-        setFilteredUsers(users);
-      } else {
-        const filtered = users.filter((user : User) => 
-          user?.fullName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          user.kullaniciAdi.toLowerCase().includes(searchTerm.toLowerCase())
-        );
-        setFilteredUsers(filtered);
-      }
-    }, [searchTerm, users]);
-  
-    useEffect(() => {
-      fetchUsers();
-    }, []);
-  
-    useEffect(() => {
-      if (users.length > 0) {
-        const unsubscribe = loadChatRooms();
-        return unsubscribe;
-      }
-    }, [users, loadChatRooms]);
-  
-    return (
-        <div className="min-h-screen bg-gray-50">
-        <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex items-center justify-between h-16">
-              <div className="flex items-center gap-3">
-                <MessageCircle className="h-8 w-8 text-blue-600" />
-                <h1 className="text-2xl font-bold text-gray-900">Mesajlar</h1>
-              </div>
-              
-              <div className="flex bg-gray-100 rounded-lg p-1">
-                <button
-                  onClick={() => setActiveTab('rooms')}
-                  className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                    activeTab === 'rooms'
-                      ? 'bg-white text-blue-600 shadow-sm'
-                      : 'text-gray-600 hover:text-gray-900'
-                  }`}
-                >
-                  Sohbet Odaları
-                </button>
-                <button
-                  onClick={() => setActiveTab('users')}
-                  className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                    activeTab === 'users'
-                      ? 'bg-white text-blue-600 shadow-sm'
-                      : 'text-gray-600 hover:text-gray-900'
-                  }`}
-                >
-                  Tüm Kullanıcılar
-                </button>
-              </div>
+  return (
+    <div className="min-h-screen bg-gray-50 w-full">
+      <div className="bg-white shadow-sm">
+        <div className="w-full px-4 py-4 sm:px-6 lg:px-8">
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
+            <div>
+              <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Toplantılar</h1>
+              <p className="mt-1 text-sm text-gray-500">Toplantılarınızı yönetin ve detaylarını görüntüleyin</p>
             </div>
+            <button
+              onClick={() => setShowModal(true)}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center justify-center gap-2 transition-colors w-full sm:w-auto"
+            >
+              <PlusIcon className="h-4 w-4" />
+              <span>Yeni Toplantı</span>
+            </button>
           </div>
         </div>
-  
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <div className="relative max-w-md">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
+      </div>
+
+      <div className="w-full px-4 py-4 sm:px-6 lg:px-8">
+        <div className="mb-4 sm:mb-6">
+          <div className="relative w-full">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <SearchIcon className="h-4 w-4 text-gray-400" />
+            </div>
             <input
               type="text"
-              placeholder={activeTab === 'rooms' ? 'Sohbetlerde ara...' : 'Kullanıcı ara...'}
+              placeholder="Toplantı ara..."
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent shadow-sm"
+              onChange={(e) => handleSearch(e.target.value)}
+              className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
             />
           </div>
         </div>
-  
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-8">
-          {activeTab === 'rooms' ? (
-            <div>
-              <div className="flex items-center gap-2 mb-6">
-                <MessageCircle className="h-6 w-6 text-gray-600" />
-                <h2 className="text-xl font-semibold text-gray-900">Sohbet Odaları</h2>
-                <span className="bg-blue-100 text-blue-800 text-sm font-medium px-2.5 py-0.5 rounded-full">
-                  {chatRooms.length}
-                </span>
-              </div>
-  
-              {roomsLoading ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                  {[...Array(8)].map((_, i) => (
-                    <div key={i} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 animate-pulse">
-                      <div className="flex items-center gap-4 mb-4">
-                        <div className="w-12 h-12 bg-gray-300 rounded-full"></div>
-                        <div className="flex-1">
-                          <div className="h-4 bg-gray-300 rounded mb-2"></div>
-                          <div className="h-3 bg-gray-300 rounded w-2/3"></div>
-                        </div>
+
+        {loading ? (
+          <div className="flex justify-center items-center py-12">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+          </div>
+        ) : error ? (
+          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+            {error}
+          </div>
+        ) : filteredMeetings.length === 0 ? (
+          <div className="text-center py-12 bg-white rounded-lg shadow-sm">
+            <Calendar className="mx-auto h-12 w-12 text-gray-400" />
+            <h3 className="mt-2 text-sm font-medium text-gray-900">Toplantı bulunamadı</h3>
+            <p className="mt-1 text-sm text-gray-500">
+              {searchTerm ? 'Arama kriterlerinize uygun toplantı bulunamadı' : 'Henüz toplantı eklenmemiş'}
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-4 sm:gap-6">
+            {filteredMeetings.map((meeting) => (
+              <div
+                key={meeting.id}
+                className="bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow border border-gray-200"
+              >
+                <div className="p-4 sm:p-6">
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3 mb-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start gap-2 mb-2">
+                        <h3 className="text-lg font-semibold text-gray-900 break-words">
+                          {meeting.title}
+                        </h3>
                       </div>
-                      <div className="h-3 bg-gray-300 rounded mb-2"></div>
-                      <div className="h-3 bg-gray-300 rounded w-1/2"></div>
-                    </div>
-                  ))}
-                </div>
-              ) : chatRooms.length === 0 ? (
-                <div className="text-center py-16">
-                  <MessageCircle className="h-16 w-16 mx-auto text-gray-300 mb-4" />
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">Henüz sohbet yok</h3>
-                  <p className="text-gray-500 mb-6">Yeni bir sohbet başlatmak için kullanıcılar sekmesini kullanın</p>
-                  <button
-                    onClick={() => setActiveTab('users')}
-                    className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                  >
-                    Kullanıcıları Görüntüle
-                  </button>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                  {chatRooms.map((room) => (
-                    <div
-                      key={room.id}
-                      onClick={() => openChatDrawer(room.user)}
-                      className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 cursor-pointer hover:shadow-md hover:border-blue-200 transition-all duration-200 group"
-                    >
-                      <div className="flex items-center gap-4 mb-4">
-                        <div className="relative">
-                          <div className="w-12 h-12 bg-blue-500 rounded-full flex items-center justify-center text-white font-semibold">
-                            {getInitials(room.user.fullName)}
-                          </div>
-                          {room.unreadCount > 0 && (
-                            <div className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 rounded-full flex items-center justify-center">
-                              <span className="text-xs text-white font-bold">
-                                {room.unreadCount > 9 ? '9+' : room.unreadCount}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <h3 className="font-semibold text-gray-900 truncate group-hover:text-blue-600">
-                            {room.user.fullName}
-                          </h3>
-                          <p className="text-sm text-gray-500 truncate">@{room.user.kullaniciAdi}</p>
-                        </div>
-                        <ChevronRight className="h-5 w-5 text-gray-400 group-hover:text-blue-500" />
-                      </div>
-                      
-                      <div className="space-y-2">
-                        <p className={`text-sm truncate ${
-                          room.unreadCount > 0 ? 'text-gray-900 font-medium' : 'text-gray-600'
-                        }`}>
-                          {room.lastMessage || 'Henüz mesaj yok'}
+                      {meeting.description && (
+                        <p className="text-sm text-gray-600 mb-3 break-words">
+                          {meeting.description}
                         </p>
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs text-gray-500 flex items-center gap-1">
-                            <Clock className="h-3 w-3" />
-                            {formatTimestamp(room.lastMessageAt)}
-                          </span>
-                          {room.lastMessageSenderId === currentUser.userId && (
-                            <span className="text-xs text-blue-600">Siz: </span>
-                          )}
-                        </div>
+                      )}
+                    </div>
+                    <span className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap ${getStatusBadge(meeting.status)}`}>
+                      {meeting.status}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+                    <div className="flex items-center gap-2 text-sm text-gray-600">
+                      <Calendar className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                      <span className="break-words">{formatDate(meeting.meetingDate)}</span>
+                    </div>
+
+                    <div className="flex items-center gap-2 text-sm text-gray-600">
+                      <ClockIcon className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                      <span>{meeting.durationMinutes} dakika</span>
+                    </div>
+
+                    <div className="flex items-center gap-2 text-sm text-gray-600">
+                      {getMeetingTypeIcon(meeting.meetingType)}
+                      <span>{meeting.meetingType}</span>
+                    </div>
+
+                    {meeting.location && (
+                      <div className="flex items-center gap-2 text-sm text-gray-600">
+                        <MapPin className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                        <span className="break-words">{meeting.location}</span>
+                      </div>
+                    )}
+
+                    <div className="flex items-center gap-2 text-sm text-gray-600">
+                      <UsersIcon className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                      <span>{meeting.participantCount} katılımcı</span>
+                    </div>
+                  </div>
+
+                  {(meeting.clientName || meeting.clientCompanyName) && (
+                    <div className="border-t border-gray-100 pt-4 mt-4">
+                      <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
+                        Müşteri Bilgileri
+                      </h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {meeting.clientName && (
+                          <div className="flex items-center gap-2 text-sm text-gray-600">
+                            <UserIcon className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                            <span className="break-words">{meeting.clientName}</span>
+                          </div>
+                        )}
+                        {meeting.clientCompanyName && (
+                          <div className="flex items-center gap-2 text-sm text-gray-600">
+                            <Building2 className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                            <span className="break-words">{meeting.clientCompanyName}</span>
+                          </div>
+                        )}
+                        {meeting.clientEmail && (
+                          <div className="flex items-center gap-2 text-sm text-gray-600 sm:col-span-2">
+                            <Mail className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                            <span className="break-words">{meeting.clientEmail}</span>
+                          </div>
+                        )}
                       </div>
                     </div>
-                  ))}
+                  )}
+
+                  {meeting.organizerName && (
+                    <div className="border-t border-gray-100 pt-3 mt-3">
+                      <div className="flex items-center gap-2 text-xs text-gray-500">
+                        <UserIcon className="h-3 w-3 flex-shrink-0" />
+                        <span>Organizatör: <span className="font-medium">{meeting.organizerName}</span></span>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-          ) : (
-            <div>
-              <div className="flex items-center gap-2 mb-6">
-                <Users className="h-6 w-6 text-gray-600" />
-                <h2 className="text-xl font-semibold text-gray-900">Tüm Kullanıcılar</h2>
-                <span className="bg-green-100 text-green-800 text-sm font-medium px-2.5 py-0.5 rounded-full">
-                  {filteredUsers.length}
-                </span>
               </div>
-  
-              {loading ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                  {[...Array(12)].map((_, i) => (
-                    <div key={i} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 animate-pulse">
-                      <div className="flex items-center gap-4 mb-4">
-                        <div className="w-12 h-12 bg-gray-300 rounded-full"></div>
-                        <div className="flex-1">
-                          <div className="h-4 bg-gray-300 rounded mb-2"></div>
-                          <div className="h-3 bg-gray-300 rounded w-2/3"></div>
-                        </div>
-                      </div>
-                      <div className="h-3 bg-gray-300 rounded"></div>
-                    </div>
-                  ))}
-                </div>
-              ) : filteredUsers.length === 0 ? (
-                <div className="text-center py-16">
-                  <Users className="h-16 w-16 mx-auto text-gray-300 mb-4" />
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">Kullanıcı bulunamadı</h3>
-                  <p className="text-gray-500">Arama kriterlerinizi değiştirmeyi deneyin</p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                  {filteredUsers.map((user) => (
-                    <div
-                      key={user.userId}
-                      onClick={() => openChatDrawer(user)}
-                      className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 cursor-pointer hover:shadow-md hover:border-green-200 transition-all duration-200 group"
-                    >
-                      <div className="flex items-center gap-4 mb-4">
-                        <div className="w-12 h-12 bg-green-500 rounded-full flex items-center justify-center text-white font-semibold">
-                          {getInitials(user.fullName)}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <h3 className="font-semibold text-gray-900 truncate group-hover:text-green-600">
-                            {user.fullName}
-                          </h3>
-                          <p className="text-sm text-gray-500 truncate">@{user.kullaniciAdi}</p>
-                        </div>
-                        <ChevronRight className="h-5 w-5 text-gray-400 group-hover:text-green-500" />
-                      </div>
-                      
-                      <div className="space-y-1">
-                        <p className="text-sm text-gray-600 truncate">{user.email}</p>
-                        <p className="text-xs text-gray-500">Sohbet başlatmak için tıklayın</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
-    );
+
+      {showModal && <MeetingModal users={users} clients={clients} isOpen={showModal} onClose={() => setShowModal(false)} onSuccess={() => setShowModal(false)} currentUser={currentUser} baseUrl={baseUrl} />}
+    </div>
+  );
   };
   
-  export default ChatPage;
+  export default MeetingsPage;

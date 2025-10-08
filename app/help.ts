@@ -266,6 +266,29 @@ export interface Chat {
     user: User;
 }
 
+export interface Meeting {
+  id: number;
+  title: string;
+  description: string | null;
+  meetingDate: string;
+  durationMinutes: number;
+  location: string | null;
+  meetingType: string;
+  status: string;
+  createdBy: number;
+  clientId: number | null;
+  createdAt: string;
+  modifiedAt: string;
+  modifiedBy: number;
+  clientName: string | null;
+  clientCompanyName: string | null;
+  clientEmail: string | null;
+  organizerName: string | null;
+  participantCount: number;
+  createdByUserName: string | null;
+  modifiedByUserName: string | null;
+}
+
 export interface Client {
   id: number;
   first_name: string;

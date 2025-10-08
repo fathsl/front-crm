@@ -1,9 +1,9 @@
 import { useAtomValue } from "jotai";
-import { AlertCircle, ArrowLeft, Check, CheckCircle, Clock, DownloadIcon, Edit3, ExternalLink, EyeIcon, FileIcon, FileText, Hourglass, ListChecksIcon, MessageSquare, Mic, MoreVertical, Paperclip, Pause, Play, Plus, Search, Send, Share, Square, Trash2, Users, UsersIcon, Volume2, X, XCircle } from "lucide-react";
+import { AlertCircle, ArrowLeft, Check, CheckCircle, Clock, DownloadIcon, Edit3, EyeIcon, FileIcon, FileText, Hourglass, ListChecksIcon, MessageSquare, Mic, MoreVertical, Paperclip, Pause, Play, Plus, PlusIcon, Search, Send, Share, Square, Trash2, Users, UsersIcon, Volume2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"; 
 import { useTranslation } from 'react-i18next';
 import { formatFileSize, type SendMessageRequest, type User } from "~/help";
-import { DiscussionStatus, type Client, type CreateDiscussionRequest, type Project } from "~/help";
+import { DiscussionStatus, type Client, type CreateDiscussionRequest } from "~/help";
 import type { Discussion } from "~/help";
 import type { Message } from "~/help";
 import { userAtom } from "~/utils/userAtom";
@@ -11,6 +11,9 @@ import { TaskMessage, TaskStatus } from "~/components/TaskMessage";
 import { TaskPriority } from '~/types/task';      
 import { useNavigate } from "react-router";
 import { useMessageToast } from "~/components/ToastNotificationSystem";
+import { AddClientModal } from "~/components/AddClientModal";
+import type { ExtendedClient, FormDataType } from "./clients";
+import { toast } from "sonner";
 
 interface MessageResponse {
   id: number;
@@ -94,7 +97,6 @@ const ChatApplication: React.FC = () => {
   const [selectedDiscussion, setSelectedDiscussion] = useState<Discussion | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
-  const [projects, setProjects] = useState<Project[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -126,12 +128,10 @@ const ChatApplication: React.FC = () => {
   const [taskRecordingTime, setTaskRecordingTime] = useState(0);
   const [selectedClients, setSelectedClients] = useState<Client[]>([]);
   const [filteredClients, setFilteredClients] = useState<Client[]>([]);
-  const [selectedProjects, setSelectedProjects] = useState<Project[]>([]);
   const [isCreatingDiscussion, setIsCreatingDiscussion] = useState(false);
   const [isClientDropdownOpen, setIsClientDropdownOpen] = useState(false);
-  const [isProjectDropdownOpen, setIsProjectDropdownOpen] = useState(false);
+  const [showClientModal, setShowClientModal] = useState(false);
   const [clientSearchTerm, setClientSearchTerm] = useState('');
-  const [projectSearchTerm, setProjectSearchTerm] = useState('');
   const [newDiscussionStatus, setNewDiscussionStatus] = useState<DiscussionStatus>(DiscussionStatus.NotStarted);
   const [updatingDiscussions, setUpdatingDiscussions] = useState<Set<number>>(new Set());
   const [isAssigning, setIsAssigning] = useState(false);
@@ -151,7 +151,8 @@ const ChatApplication: React.FC = () => {
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
   const notifiedMessageIdsRef = useRef<Set<number>>(new Set());
   const lastUnreadCountsRef = useRef<Map<number, number>>(new Map());
-
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [editingDiscussionId, setEditingDiscussionId] = useState<number | null>(null);
   const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const audioStreamRef = useRef<MediaStream | null>(null);
   const taskAudioStreamRef = useRef<MediaStream | null>(null);
@@ -161,6 +162,29 @@ const ChatApplication: React.FC = () => {
   const navigate = useNavigate();
   const baseUrl = "https://api-crm-tegd.onrender.com";
   const isAdmin = currentUser?.role === "Yonetici";
+
+  const [formData, setFormData] = useState<Omit<ExtendedClient, 'id'> & { 
+    city?: string; 
+    address?: string; 
+    file?: File;
+  }>({
+    first_name: '',
+    last_name: '',
+    details: '',
+    country: '',
+    phone: '',
+    email: '',
+    createdAt: new Date(),
+    modifiedAt: new Date(),
+    createdBy: 0,
+    modifiedBy: 0,
+    imageUrl: '',
+    zipCode: '',
+    VATNumber: '',
+    address: '',
+    city: '',
+    fileUrl: '',
+  });
 
   const filterByRole = (list: Client[]) => {
       if (isAdmin) return list;
@@ -316,20 +340,6 @@ const ChatApplication: React.FC = () => {
       setLoading(false);
     }
   };
-
-  const fetchProjects = async () => {
-        try {
-          const response = await fetch(`${baseUrl}/api/Project`);
-          const data = await response.json();
-          setProjects(data);
-        } catch (error) {
-          console.error('Projects fetch error:', error);
-        }
-  };
-
-  useEffect(() => {
-    fetchProjects();
-  }, []);
 
   useEffect(() => {
     fetchUsers();
@@ -553,6 +563,7 @@ const ChatApplication: React.FC = () => {
             createdAt: new Date()
           }, senderLabel);
         }
+        fetchDiscussions(currentUser?.userId, selectedUser?.userId);
         setDiscussions(prev => [newDiscussion, ...prev]);
         setNewDiscussionTitle('');
         setNewDiscussionDescription('');
@@ -571,6 +582,62 @@ const ChatApplication: React.FC = () => {
     }
   };
 
+  const updateDiscussion = async () => {
+    if (!editingDiscussionId) return;
+    
+    setIsCreatingDiscussion(true);
+    try {
+      const response = await fetch(
+        `${baseUrl}/api/Chat/discussions/${editingDiscussionId}`,
+        {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            title: newDiscussionTitle,
+            description: newDiscussionDescription,
+            status: newDiscussionStatus,
+            clientId: selectedClients.length > 0 ? selectedClients[0].id : 0,
+            clientIds: selectedClients.map(c => c.id),
+            updatedByUserId: currentUser?.userId
+          })
+        }
+      );
+  
+      if (response.ok) {
+        const updatedDiscussion = await response.json();
+
+        setDiscussions(prev =>
+          prev.map(disc =>
+            disc.id === editingDiscussionId ? updatedDiscussion : disc
+          )
+        );
+
+        if (selectedDiscussion?.id === editingDiscussionId) {
+          setSelectedDiscussion(updatedDiscussion);
+        }
+        fetchDiscussions(currentUser?.userId, selectedUser?.userId);
+        setShowCreateDiscussion(false);
+        setIsEditMode(false);
+        setEditingDiscussionId(null);
+        setNewDiscussionTitle('');
+        setNewDiscussionDescription('');
+        setSelectedClients([]);
+        setNewDiscussionStatus(DiscussionStatus.NotStarted);
+        
+        console.log('Discussion updated successfully');
+      } else {
+        const errorData = await response.json();
+        console.error('Error updating discussion:', errorData);
+      }
+    } catch (error) {
+      console.error('Error updating discussion:', error);
+    } finally {
+      setIsCreatingDiscussion(false);
+    }
+  };
+
   const refreshDiscussionsAfterMessage = useCallback(async () => {
     if (currentUser?.userId) {
       await fetchDiscussions(currentUser.userId, selectedUser?.userId);
@@ -580,25 +647,50 @@ const ChatApplication: React.FC = () => {
   const handleStatusUpdate = useCallback(async (discussionId: number, currentStatus: number, e: React.MouseEvent) => {
     e.stopPropagation();
     if (updatingDiscussions.has(discussionId)) return;
-  
+
     const nextStatus = getNextStatus(currentStatus);
     setUpdatingDiscussions(prev => new Set([...prev, discussionId]));
-  
+
     const request = {
       status: nextStatus,
       updatedByUserId: currentUser?.userId || 0
     };
-  
+
     try {
       const response = await fetch(`${baseUrl}/api/Chat/discussions/${discussionId}/status`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(request)
       });
-  
+
       if (response.ok) {
+        const updatedDiscussion = await response.json();
+
+        if (currentUser && updatedDiscussion) {
+          const receiverId = updatedDiscussion.senderId === currentUser.userId 
+            ? updatedDiscussion.receiverId 
+            : updatedDiscussion.senderId;
+
+          const statusChangeNotification = {
+            id: Date.now(),
+            discussionId: discussionId,
+            messageType: 6,
+            content: `Discussion status changed to ${getDiscussionStatusText(nextStatus)}`,
+            title: updatedDiscussion.title,
+            senderName: currentUser.kullaniciAdi,
+            senderId: currentUser.userId,
+            receiverId: receiverId,
+            createdAt: new Date(),
+            status: nextStatus
+          };
+
+          if (receiverId === currentUser.userId) {
+            showToastForMessage(statusChangeNotification, currentUser.kullaniciAdi);
+          }
+        }
+
         await refreshDiscussionsAfterMessage();
-        
+
         if (selectedDiscussion?.id === discussionId) {
           const updatedDiscResponse = await fetch(`${baseUrl}/api/Chat/discussions/${currentUser?.userId}`);
           if (updatedDiscResponse.ok) {
@@ -624,7 +716,6 @@ const ChatApplication: React.FC = () => {
       });
     }
   }, [currentUser?.userId, selectedDiscussion, getNextStatus, refreshDiscussionsAfterMessage]);
-  
 
   const assignUsersToDiscussion = async (discussionId: number, userIds: number[]) => {
     if (!currentUser || userIds.length === 0) return;
@@ -681,11 +772,6 @@ const ChatApplication: React.FC = () => {
     (client.email && client.email.toLowerCase().includes(clientSearchTerm.toLowerCase()))
   );
 
-  const filteredProjects = projects.filter(project =>
-    project.title.toLowerCase().includes(projectSearchTerm.toLowerCase()) ||
-    (project.details && project.details.toLowerCase().includes(projectSearchTerm.toLowerCase()))
-  );
-  
   const handleCloseUsersDrawer = () => {
     setShowUsersDrawer(false);
     setSelectedDiscussionId(null);
@@ -1547,7 +1633,6 @@ const ChatApplication: React.FC = () => {
     closeTaskDrawer: () => void,
     baseUrl: string,
     clientIds: number[],
-    projectIds: number[],
   ) => {
     if (!taskContent.trim() && !taskFile && !taskAudioBlob) return;
 
@@ -1565,7 +1650,6 @@ const ChatApplication: React.FC = () => {
       estimatedTime: null,
       assignedUserIds: selectedUser ? [selectedUser.userId] : [],
       clientIds: clientIds,
-      projectIds: projectIds,
     };
   
     try {
@@ -1744,6 +1828,53 @@ const ChatApplication: React.FC = () => {
     setTaskRecordingTime(0);
     setTaskAudioBlob(null);
     setTaskContent('');
+  };
+
+  const createClient = async (clientData: Client) => {
+    try {
+      const formData = new FormData();
+     
+      formData.append('First_name', clientData.first_name);
+      formData.append('Last_name', clientData.last_name);
+      formData.append('Phone', clientData.phone || '');
+      formData.append('Email', clientData.email);
+      formData.append('Details', clientData.details || '');
+      formData.append('Country', clientData.country || '');
+      formData.append('City', clientData.city || '');
+      formData.append('Address', clientData.address || '');
+      formData.append('ZipCode', clientData.zipCode || '');
+      formData.append('VATNumber', clientData.VATNumber || '');
+      formData.append('CreatedBy', clientData.createdBy?.toString() || '1');
+     
+      if (clientData.file) {
+        formData.append('file', clientData.file);
+      }
+ 
+      const response = await fetch(`${baseUrl}/api/Clients`, {
+        method: 'POST',
+        body: formData,
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        
+        const clientId = result.id || result.clientId || result.Id || result.ClientId || result.client_id;
+        
+        if (!clientId) {
+          toast.error('Client created but ID not found');
+          return { success: false, message: 'Client ID not returned from server' };
+        }          
+        await fetchClients();
+        toast.success('Client and resources created successfully');
+        return { success: true, data: result };
+      } else {
+        const errorData = await response.json();
+        return { success: false, message: errorData.message || 'Server error occurred' };
+      }
+    } catch (err) {
+      console.error('Network error:', err);
+      return { success: false, message: 'Kullanıcı oluşturulurken hata oluştu - Network error' };
+    }
   };
 
   const downloadTaskFile = async (taskId: number, messageId: number, fileName: string) => {
@@ -1962,6 +2093,64 @@ const ChatApplication: React.FC = () => {
     setTaskStatus(TaskStatus.Backlog);
   };
 
+  const resetForm = () => {
+    setFormData({
+      first_name: '',
+      last_name: '',
+      email: '',
+      phone: '',
+      details: '',
+      country: '',
+      city: '',
+      address: '',
+      createdAt: new Date(),
+      modifiedAt: new Date(),
+      createdBy: 0,
+      modifiedBy: 0,
+      imageUrl: '',
+      zipCode: '',
+      VATNumber: '',
+      fileUrl: ''
+    });
+  };
+
+  const handleSubmit =async (data: FormDataType) => {    
+      if (!formData.first_name || !formData.last_name || !formData.email) {
+        alert('Lütfen zorunlu alanları doldurun');
+        return;
+      }
+     
+      const currentUserId = currentUser?.userId || 1; 
+      const clientData: Client = {
+        ...formData,
+        id: 0,
+        createdBy: currentUserId,
+        modifiedBy: currentUserId,
+        modifiedAt: new Date(),
+        createdAt: new Date()
+      };
+     
+      let result;
+      
+      result = await createClient(clientData);
+      
+      if (result.success) {
+        setShowClientModal(false);
+        resetForm();
+        alert('Kullanıcı başarıyla oluşturuldu');
+      } else {
+        alert(result.message || 'An error occurred');
+      }
+    };
+
+  const handleEditDiscussion = (discussion: Discussion) => {
+      setIsEditMode(true);
+      setEditingDiscussionId(discussion.id);
+      setNewDiscussionTitle(discussion.title);
+      setNewDiscussionDescription(discussion.description || '');
+      setShowCreateDiscussion(true);
+  };
+
   useEffect(() => {
     if (messagesContainerRef.current) {
       const el = messagesContainerRef.current;
@@ -1970,24 +2159,14 @@ const ChatApplication: React.FC = () => {
   }, [messages, selectedDiscussion]);
 
   return (
-    <div className="h-screen bg-gray-50 flex flex-col md:flex-row">
-      <div className="md:hidden bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between">
+    <div className="h-screen bg-gray-50 flex flex-col">
         {currentView !== 'users' && (
           <button onClick={goBack} className="p-2 -ml-2">
             <ArrowLeft className="w-5 h-5 text-gray-600" />
           </button>
         )}
-        <h1 className="font-semibold text-gray-900">
-          {currentView === 'users' ? 'Contacts' :
-           currentView === 'discussions' ? selectedUser?.kullaniciAdi :
-           selectedDiscussion?.title}
-        </h1>
-        <button className="p-2 -mr-2">
-          <MoreVertical className="w-5 h-5 text-gray-600" />
-        </button>
-      </div>
 
-    <div className={`${currentView === 'users' ? 'flex' : 'hidden'} md:flex w-full md:w-80 bg-white flex-col border-r border-gray-200`}>
+      <div className={`${currentView === 'users' ? 'flex' : 'hidden'} w-full bg-white flex-col`}>
         <div className="p-4 border-b border-gray-100">
           <div className="flex items-center justify-between">
             <div>
@@ -2047,7 +2226,7 @@ const ChatApplication: React.FC = () => {
       </div>
     </div>
 
-    <div className={`${currentView === 'discussions' ? 'flex' : 'hidden'} ${selectedUser ? 'md:flex' : 'md:hidden'} w-full md:w-80 bg-white flex-col border-r border-gray-200`}>
+    <div className={`${currentView === 'discussions' ? 'flex' : 'hidden'} w-full bg-white flex-col`}>
       <div className="p-4 border-b border-gray-100">
         <div className="flex items-center justify-between">
           <div>
@@ -2072,12 +2251,20 @@ const ChatApplication: React.FC = () => {
               <ArrowLeft className="w-4 h-4" />
             </button>
             {selectedUser && (
-              <button 
-                onClick={() => setShowCreateDiscussion(true)} 
-                className="p-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition"
-              >
-                <Plus className="w-4 h-4" />
-              </button>
+              <button
+              onClick={() => {
+                setShowCreateDiscussion(true);
+                setIsEditMode(false);
+                setEditingDiscussionId(null);
+                setNewDiscussionTitle('');
+                setNewDiscussionDescription('');
+                setSelectedClients([]);
+                setNewDiscussionStatus(DiscussionStatus.NotStarted);
+              }}
+              className="p-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition"
+            >
+              <Plus className="w-4 h-4" />
+            </button>
             )}
           </div>
         </div>
@@ -2140,11 +2327,6 @@ const ChatApplication: React.FC = () => {
               });
             };
 
-            const handleEdit = (e: React.MouseEvent) => {
-              e.stopPropagation();
-              console.log('Edit discussion:', discussion.id);
-            };
-
             const handleDelete = (e: React.MouseEvent) => {
               e.stopPropagation();
               deleteDiscussion(discussion.id);
@@ -2161,66 +2343,71 @@ const ChatApplication: React.FC = () => {
                     : 'border-gray-100 hover:border-gray-200'
                 }`}
               >
-                <div 
+                <div
                   className={`absolute top-0 left-0 right-0 h-1 ${
                     getStatusBackgroundColor(discussion.lastTaskStatus, false)
                   }`}
                 />
 
                 <div className="p-4 sm:p-5 lg:p-6">
-                  <div className="flex items-start justify-between mb-3 sm:mb-4">
-                    <div className="flex-1 min-w-0 pr-4">
-                        <div className="flex items-start justify-between gap-2">
-                        <h3 className="text-base sm:text-lg lg:text-xl font-semibold text-gray-900 mb-2 line-clamp-2 group-hover:text-blue-600 transition-colors break-words">
-                          {discussion.title}
-                        </h3>
-                        {isAdmin && (
-                          <div className="flex items-center gap-2">
-                          {/* <button
-                              onClick={handleEdit}
-                              className="p-2 rounded-lg text-gray-500 hover:text-blue-600 hover:bg-blue-50 transition-colors"
-                              title="Edit discussion"
-                            >
-                              <Edit3 className="w-4 h-4" />
-                            </button> */}
-                            <button
-                              onClick={handleDelete}
-                              className="p-2 rounded-lg text-gray-500 hover:text-red-600 hover:bg-red-50 transition-colors"
-                              title="Delete discussion"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                        )}
-                        </div> 
-                        <div className="flex items-center gap-2 ml-2">
-                          {unreadCount > 0 && (
-                            <span
-                              className="inline-flex items-center justify-center min-w-[22px] h-6 px-2 rounded-full text-xs font-semibold bg-red-500 text-white shadow-sm"
-                              title={`${unreadCount} unread message${unreadCount > 1 ? 's' : ''} (messages you need to read)`}
-                            >
-                              {unreadCount}
-                            </span>
-                          )}
-                          
-                          {unseenCount > 0 && (
-                            <span
-                              className="inline-flex items-center justify-center min-w-[22px] h-6 px-2 rounded-full text-xs font-semibold bg-orange-500 text-white shadow-sm"
-                              title={`${unseenCount} unseen message${unseenCount > 1 ? 's' : ''} (messages you sent that others haven't read)`}
-                            >
-                              <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                                <path fillRule="evenodd" d="M18 10c0 3.866-3.582 7-8 7a8.841 8.841 0 01-4.083-.98L2 17l1.338-3.123C2.493 12.767 2 11.434 2 10c0-3.866 3.582-7 8-7s8 3.134 8 7zM7 9H5v2h2V9zm8 0h-2v2h2V9zM9 9h2v2H9V9z" clipRule="evenodd" />
-                              </svg>
-                              {unseenCount}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
+                <div className="flex items-start justify-between mb-3 sm:mb-4">
+                  <div className="flex-1 min-w-0 pr-4">
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <div>
+                      <h3 className="text-base sm:text-lg lg:text-xl font-semibold text-gray-900 line-clamp-2 group-hover:text-blue-600 transition-colors break-words flex-1">
+                        {discussion.title}
+                      </h3>
                       <p className="text-sm sm:text-base text-gray-600 line-clamp-2 sm:line-clamp-3 mb-3 leading-relaxed break-words">
                         {discussion.description}
                       </p>
+                      </div>
+                      <div className="flex flex-col items-end space-y-2">
+                      <div className="flex items-center gap-2 ml-2">
+                      {unreadCount > 0 && (
+                        <span
+                          className="inline-flex items-center justify-center min-w-[22px] h-6 px-2 rounded-full text-xs font-semibold bg-red-500 text-white shadow-sm"
+                          title={`${unreadCount} unread message${unreadCount > 1 ? 's' : ''} (messages you need to read)`}
+                        >
+                          {unreadCount}
+                        </span>
+                      )}
+                    
+                      {unseenCount > 0 && (
+                        <span
+                          className="inline-flex items-center justify-center min-w-[22px] h-6 px-2 rounded-full text-xs font-semibold bg-orange-500 text-white shadow-sm"
+                          title={`${unseenCount} unseen message${unseenCount > 1 ? 's' : ''} (messages you sent that others haven't read)`}
+                        >
+                          <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M18 10c0 3.866-3.582 7-8 7a8.841 8.841 0 01-4.083-.98L2 17l1.338-3.123C2.493 12.767 2 11.434 2 10c0-3.866 3.582-7 8-7s8 3.134 8 7zM7 9H5v2h2V9zm8 0h-2v2h2V9zM9 9h2v2H9V9z" clipRule="evenodd" />
+                          </svg>
+                          {unseenCount}
+                        </span>
+                      )}
+                    </div>
+                      {isAdmin && (
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <button
+                            onClick={() => handleEditDiscussion(discussion)}
+                            className="p-2 rounded-lg text-gray-500 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                            title="Edit discussion"
+                          >
+                            <Edit3 className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={handleDelete}
+                            className="p-2 rounded-lg text-gray-500 hover:text-red-600 hover:bg-red-50 transition-colors"
+                            title="Delete discussion"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      )}
+                      </div>
+                    </div>
+                    
                   </div>
+                  
+                </div>
 
                   <div className="bg-gray-50 rounded-xl p-3 mb-4">
                     <div className="flex flex-col gap-2 text-sm">
@@ -2275,7 +2462,8 @@ const ChatApplication: React.FC = () => {
                     )}
                   </div>
 
-                  <div className="flex flex-col gap-3">
+                  <div className="flex flex-col md:flex-row gap-3 justify-between">
+                    <div className="flex flex-col gap-2">
                     <div className="flex items-center text-xs text-gray-500">
                       <svg className="w-4 h-4 mr-1.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -2290,6 +2478,7 @@ const ChatApplication: React.FC = () => {
                       <span className="truncate font-medium text-xs">Modified: {new Date(discussion.updatedAt).toLocaleString()}</span>
                     </div>
                     )}
+                    </div>
 
                     <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
                       <button
@@ -2388,7 +2577,6 @@ const ChatApplication: React.FC = () => {
                         />
                       </div>
                     </div>
-          
                     {selectedUsers.size > 0 && (
                       <div className="flex-shrink-0 px-4 py-2 bg-purple-50 border-b border-purple-100">
                         <p className="text-sm text-purple-700">
@@ -2511,7 +2699,7 @@ const ChatApplication: React.FC = () => {
                     </div>
                   </div>
                 </>
-              )}
+                )}
               </div>
             );
           })
@@ -2519,7 +2707,7 @@ const ChatApplication: React.FC = () => {
       </div>
     </div>
 
-      <div className={`${currentView === 'chat' ? 'flex' : 'hidden'} ${selectedDiscussion ? 'md:flex' : 'md:hidden'} flex-1 flex-col bg-gray-50`}>
+    <div className={`${currentView === 'chat' ? 'flex' : 'hidden'} w-full flex-col bg-gray-50 h-screen`}>
         <div className="bg-white border-b border-gray-200 p-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
@@ -2775,23 +2963,23 @@ const ChatApplication: React.FC = () => {
         )}
 
         {showDropdown && (
-              <div className="mb-4 p-3 rounded-xl backdrop-blur-sm bg-white shadow-lg border border-slate-200 py-2 min-w-[160px] z-50">
-                {dropdownOptions.map((option) => (
-                  <button
-                    key={option.type}
-                    onClick={() => handleDropdownSelect(option.type)}
-                    className={`w-full flex items-center px-4 py-3 text-sm transition ${option.color}`}
-                  >
-                    <option.icon size={16} className="mr-3" />
+          <div className="mb-4 p-3 rounded-xl backdrop-blur-sm bg-white shadow-lg border border-slate-200 py-2 min-w-[160px] z-50">
+              {dropdownOptions.map((option) => (
+                <button
+                  key={option.type}
+                  onClick={() => handleDropdownSelect(option.type)}
+                  className={`w-full flex items-center px-4 py-3 text-sm transition ${option.color}`}
+                >
+                  <option.icon size={16} className="mr-3" />
                     {option.label}
-                  </button>
-                ))}
-              </div>
-          )}
+                </button>
+              ))}
+          </div>
+        )}
 
-        <div className="bg-white border-t border-gray-200 p-4">
+        <div className="bg-white border-t border-gray-200 p-4 flex-shrink-0">
             <div className="flex items-end space-x-3">
-            <input
+              <input
                 type="file"
                 ref={fileInputRef}
                 onChange={handleFileChange}
@@ -2851,36 +3039,15 @@ const ChatApplication: React.FC = () => {
         </div>
       </div>
 
-      {!selectedUser && (
-        <div className="hidden lg:flex flex-1 items-center justify-center bg-gradient-to-br from-blue-50 to-purple-50">
-          <div className="text-center">
-            <div className="w-24 h-24 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full flex items-center justify-center text-white text-sm font-medium">
-              <Users size={40} className="text-white" />
-            </div>
-            <div>
-              <h3 className="text-xl font-semibold text-slate-700 mb-2">Welcome to Chat</h3>
-              <p className="text-slate-500">Select a contact to start messaging</p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {selectedUser && !selectedDiscussion && (
-        <div className="hidden lg:flex flex-1 items-center justify-center bg-gradient-to-br from-purple-50 to-pink-50">
-          <div className="text-center">
-            <div className="w-24 h-24 bg-gradient-to-br from-purple-400 to-pink-500 rounded-full flex items-center justify-center text-white text-sm font-medium">
-              <MessageSquare size={40} className="text-white" />
-            </div>
-            <h3 className="text-xl font-semibold text-slate-700 mb-2">Select a Discussion</h3>
-            <p className="text-slate-500">Choose a conversation to start chatting</p>
-          </div>
-        </div>
-      )}
-
     {showCreateDiscussion && (
       <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
         <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl">
-          <h3 className="text-xl font-bold mb-6 text-slate-800">{t('chats.newDiscussion.title')}</h3>
+          <h3 className="text-xl font-bold mb-6 text-slate-800">
+            {isEditMode 
+            ? "Edit Discussion"
+            : "New Discussion"
+            }
+          </h3>
           <div className="space-y-4">
             <input
               type="text"
@@ -2997,7 +3164,7 @@ const ChatApplication: React.FC = () => {
                               </div>
                             </div>
                           </div>
-                          
+
                           <div className="max-h-40 overflow-y-auto px-3 pb-3">
                             {filteredClients.map(client => {
                               const isSelected = selectedClients.some(c => c.id === client.id);
@@ -3042,7 +3209,7 @@ const ChatApplication: React.FC = () => {
                                 </div>
                               );
                             })}
-                            
+
                             {filteredClients.length === 0 && clientSearchTerm && (
                               <div className="text-center text-slate-500 text-sm py-4">
                                 <svg className="w-8 h-8 mx-auto mb-2 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -3051,7 +3218,7 @@ const ChatApplication: React.FC = () => {
                                 {t('chats.newDiscussion.noClientsFound', { term: clientSearchTerm })}
                               </div>
                             )}
-                            
+
                             {clients.length === 0 && (
                               <div className="text-center text-slate-500 text-sm py-4">
                                 <svg className="w-8 h-8 mx-auto mb-2 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -3063,7 +3230,7 @@ const ChatApplication: React.FC = () => {
                           </div>
                         </div>
                       )}
-              </div>
+                </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 {t('chats.newDiscussion.status')}
@@ -3079,35 +3246,42 @@ const ChatApplication: React.FC = () => {
               </select>
             </div>
           </div>
-          
+
           <div className="flex space-x-3 mt-6">
-            <button
-              onClick={createDiscussion}
-              disabled={isCreatingDiscussion}
-              className={`px-4 py-2 rounded-lg text-white font-medium transition-colors ${
-                isCreatingDiscussion
-                  ? 'bg-gray-400 cursor-not-allowed'
-                  : 'bg-blue-500 hover:bg-blue-600'
-              }`}
-            >
-              {isCreatingDiscussion ? (
-                <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                  {t('chats.newDiscussion.creating')}
-                </div>
-              ) : (
-                t('chats.newDiscussion.create')
-              )}
-            </button>
-            <button
-              onClick={() => {
-                setShowCreateDiscussion(false);
-                setNewDiscussionStatus(DiscussionStatus.NotStarted);
-              }}
-              className="flex-1 bg-slate-100 text-slate-700 py-3 rounded-xl hover:bg-slate-200 transition font-medium"
-            >
-              {t('chats.newDiscussion.cancel')}
-            </button>
+          <button
+            onClick={() => isEditMode ? updateDiscussion() : createDiscussion()}
+            disabled={isCreatingDiscussion}
+            className={`px-4 py-2 rounded-lg text-white font-medium transition-colors ${
+              isCreatingDiscussion
+                ? 'bg-gray-400 cursor-not-allowed'
+                : 'bg-blue-500 hover:bg-blue-600'
+            }`}
+          >
+            {isCreatingDiscussion ? (
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                {isEditMode 
+                  ? 'Updating'
+                  : 'Creating'
+                }
+              </div>
+            ) : (
+              isEditMode 
+                ? 'Update'
+                : 'Create'
+            )}
+          </button>
+          <button
+            onClick={() => {
+              setShowCreateDiscussion(false);
+              setNewDiscussionStatus(DiscussionStatus.NotStarted);
+              setIsEditMode(false);
+              setEditingDiscussionId(null);
+            }}
+            className="flex-1 bg-slate-100 text-slate-700 py-3 rounded-xl hover:bg-slate-200 transition font-medium"
+          >
+            {t('chats.newDiscussion.cancel')}
+          </button>
           </div>
         </div>
       </div>
@@ -3164,8 +3338,9 @@ const ChatApplication: React.FC = () => {
               <div className="bg-slate-50 rounded-lg p-4 space-y-3">
                 <div className="space-y-2">
                   <div className="text-sm font-medium text-slate-700">Clients:</div>
-                  
+
                   <div className="relative">
+                    <div className="flex items-center gap-4">
                     <div
                       onClick={() => setIsClientDropdownOpen(!isClientDropdownOpen)}
                       className="min-h-[42px] w-full border border-slate-300 rounded-lg px-3 py-2 bg-white cursor-pointer hover:border-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all duration-200 flex items-center justify-between"
@@ -3206,7 +3381,13 @@ const ChatApplication: React.FC = () => {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                       </svg>
                     </div>
-                    
+                    <div className="flex-1">
+                      <button onClick={() => setShowClientModal(true)} className="p-2 text-slate-500 hover:text-slate-700 rounded-lg hover:bg-slate-200 border border-2 border-slate-300 transition">
+                      <PlusIcon  className="w-5 h-5 text-slate-400"/>
+                      </button>
+                    </div>
+                    </div>
+
                     {isClientDropdownOpen && (
                       <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-300 rounded-lg shadow-lg z-50 max-h-60 overflow-hidden">
                         <div className="p-3">
@@ -3238,7 +3419,7 @@ const ChatApplication: React.FC = () => {
                               </button>
                             )}
                           </div>
-                          
+
                           <div className="flex items-center justify-between mb-2 pb-2 border-b border-slate-200">
                             <span className="text-sm font-medium text-slate-700">{t('chats.newDiscussion.selectClientsHeader')}</span>
                             <div className="flex gap-2">
@@ -3264,7 +3445,7 @@ const ChatApplication: React.FC = () => {
                             </div>
                           </div>
                         </div>
-                        
+
                         <div className="max-h-40 overflow-y-auto px-3 pb-3">
                           {filteredClients.map(client => {
                             const isSelected = selectedClients.some(c => c.id === client.id);
@@ -3309,7 +3490,7 @@ const ChatApplication: React.FC = () => {
                               </div>
                             );
                           })}
-                          
+
                           {filteredTaskClients.length === 0 && clientSearchTerm && (
                             <div className="text-center text-slate-500 text-sm py-4">
                               <svg className="w-8 h-8 mx-auto mb-2 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -3337,189 +3518,6 @@ const ChatApplication: React.FC = () => {
                       <span>{selectedClients.length} client{selectedClients.length !== 1 ? 's' : ''} selected</span>
                       <button
                         onClick={() => setSelectedClients([])}
-                        className="text-blue-600 hover:text-blue-800 font-medium"
-                      >
-                        Clear
-                      </button>
-                    </div>
-                  )}
-                </div>
-      
-                <div className="space-y-2">
-                  <div className="text-sm font-medium text-slate-700">Projects:</div>
-                  
-                  <div className="relative">
-                    <div
-                      onClick={() => setIsProjectDropdownOpen(!isProjectDropdownOpen)}
-                      className="min-h-[42px] w-full border border-slate-300 rounded-lg px-3 py-2 bg-white cursor-pointer hover:border-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all duration-200 flex items-center justify-between"
-                    >
-                      <div className="flex-1 flex flex-wrap gap-2">
-                        {selectedProjects.length === 0 ? (
-                          <span className="text-slate-500 text-sm">Select projects...</span>
-                        ) : (
-                          selectedProjects.map(project => (
-                            <span
-                              key={project.id}
-                              className="inline-flex items-center gap-1 bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full"
-                            >
-                              {project.title}
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setSelectedProjects(prev => prev.filter(p => p.id !== project.id));
-                                }}
-                                className="hover:bg-blue-200 rounded-full p-0.5 transition-colors"
-                              >
-                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                </svg>
-                              </button>
-                            </span>
-                          ))
-                        )}
-                      </div>
-                      <svg
-                        className={`w-5 h-5 text-slate-400 transition-transform duration-200 ${
-                          isProjectDropdownOpen ? 'rotate-180' : ''
-                        }`}
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                      </svg>
-                    </div>
-
-                    {isProjectDropdownOpen && (
-                      <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-300 rounded-lg shadow-lg z-50 max-h-60 overflow-hidden">
-                        <div className="p-3">
-                          <div className="relative mb-3">
-                            <input
-                              type="text"
-                              placeholder="Search projects..."
-                              value={projectSearchTerm}
-                              onChange={(e) => setProjectSearchTerm(e.target.value)}
-                              className="w-full pl-9 pr-4 py-2 text-sm border border-slate-300 rounded-md focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all"
-                              autoFocus
-                            />
-                            <svg
-                              className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                            </svg>
-                            {projectSearchTerm && (
-                              <button
-                                onClick={() => setProjectSearchTerm('')}
-                                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                              >
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                </svg>
-                              </button>
-                            )}
-                          </div>
-                          
-                          <div className="flex items-center justify-between mb-2 pb-2 border-b border-slate-200">
-                            <span className="text-sm font-medium text-slate-700">Select Projects</span>
-                            <div className="flex gap-2">
-                              {filteredProjects.length > 0 && (
-                                <button
-                                  onClick={() => {
-                                    const newProjects = filteredProjects.filter(project =>
-                                      !selectedProjects.some(selected => selected.id === project.id)
-                                    );
-                                    setSelectedProjects(prev => [...prev, ...newProjects]);
-                                  }}
-                                  className="text-xs text-blue-600 hover:text-blue-800 px-2 py-1 hover:bg-blue-50 rounded font-medium"
-                                >
-                                  Select All
-                                </button>
-                              )}
-                              <button
-                                onClick={() => setSelectedProjects([])}
-                                className="text-xs text-slate-500 hover:text-slate-700 px-2 py-1 hover:bg-slate-100 rounded"
-                              >
-                                Clear All
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                        
-                        <div className="max-h-40 overflow-y-auto px-3 pb-3">
-                          {filteredProjects.map(project => {
-                            const isSelected = selectedProjects.some(p => p.id === project.id);
-                            return (
-                              <div
-                                key={project.id}
-                                onClick={() => {
-                                  if (isSelected) {
-                                    setSelectedProjects(prev => prev.filter(p => p.id !== project.id));
-                                  } else {
-                                    setSelectedProjects(prev => [...prev, project]);
-                                  }
-                                }}
-                                className={`flex items-center gap-3 p-2 rounded-md cursor-pointer transition-colors ${
-                                  isSelected
-                                    ? 'bg-blue-50 text-blue-900'
-                                    : 'hover:bg-slate-50 text-slate-700'
-                                }`}
-                              >
-                                <div className={`w-4 h-4 border-2 rounded flex items-center justify-center ${
-                                  isSelected
-                                    ? 'bg-blue-500 border-blue-500'
-                                    : 'border-slate-300'
-                                }`}>
-                                  {isSelected && (
-                                    <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                    </svg>
-                                  )}
-                                </div>
-                                <div className="flex items-center gap-2 flex-1">
-                                  <div className="w-8 h-8 bg-gradient-to-br from-orange-500 to-red-600 rounded-full flex items-center justify-center text-white text-sm font-medium">
-                                    {project.title.charAt(0).toUpperCase()}
-                                  </div>
-                                  <div className="flex-1 min-w-0">
-                                    <div className="text-sm font-medium truncate">{project.title}</div>
-                                    {project.details && (
-                                      <div className="text-xs text-slate-500 truncate">{project.details}</div>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          })}
-                          
-                          {filteredProjects.length === 0 && projectSearchTerm && (
-                            <div className="text-center text-slate-500 text-sm py-4">
-                              <svg className="w-8 h-8 mx-auto mb-2 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                              </svg>
-                              No projects found for "{projectSearchTerm}"
-                            </div>
-                          )}
-                          
-                          {projects.length === 0 && (
-                            <div className="text-center text-slate-500 text-sm py-4">
-                              <svg className="w-8 h-8 mx-auto mb-2 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                              </svg>
-                              No projects available
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                  
-                  {selectedProjects.length > 0 && (
-                    <div className="flex items-center justify-between text-xs text-slate-600 bg-white px-3 py-2 rounded border">
-                      <span>{selectedProjects.length} project{selectedProjects.length !== 1 ? 's' : ''} selected</span>
-                      <button
-                        onClick={() => setSelectedProjects([])}
                         className="text-blue-600 hover:text-blue-800 font-medium"
                       >
                         Clear
@@ -3647,7 +3645,7 @@ const ChatApplication: React.FC = () => {
                   Cancel
                 </button>
                 <button
-                  onClick={() => handleSendTask(taskContent, taskFile, taskAudioBlob, taskRecordingTime, drawerType, taskStatus, selectedDiscussion, currentUser, selectedUser, setMessages, closeDrawer, baseUrl, selectedClients.map(c => c.id), selectedProjects.map(p => p.id),)}
+                  onClick={() => handleSendTask(taskContent, taskFile, taskAudioBlob, taskRecordingTime, drawerType, taskStatus, selectedDiscussion, currentUser, selectedUser, setMessages, closeDrawer, baseUrl, selectedClients.map(c => c.id))}
                   disabled={!taskContent.trim() && !taskFile && !taskAudioBlob}
                   className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center space-x-2"
                 >
@@ -3659,6 +3657,17 @@ const ChatApplication: React.FC = () => {
           </div>
         </div>
     )}
+
+      {showClientModal && (
+        <AddClientModal
+          modalMode="add"
+          formData={formData}
+          setFormData={setFormData}
+          open={showClientModal}
+          onClose={() => setShowClientModal(false)}
+          onSubmit={handleSubmit}
+        />
+      )}
 
     </div>
   );
