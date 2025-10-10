@@ -1,10 +1,12 @@
 import { Calendar, Clock, FileText, MapPin, Save, UsersIcon, X } from "lucide-react";
-import { useState } from "react";
-import type { Client, User } from "~/help";
+import { useEffect, useState } from "react";
+import type { Client, Meeting, User } from "~/help";
+import ParticipantsDrawer from "./ParticipantsDrawer";
+import { toast } from "sonner";
 
 type FormErrors = Record<string, string>;
 
-const MeetingModal = ({ isOpen, onClose, onSuccess, baseUrl, currentUser, users, clients }: { isOpen: boolean, onClose: () => void, onSuccess?: (data: any) => void, baseUrl: string, currentUser: User, users: User[], clients: Client[] }) => {
+const MeetingModal = ({ isOpen, onClose, onSuccess, baseUrl, currentUser, users, clients, editingMeeting }: { isOpen: boolean, onClose: () => void, onSuccess?: () => void | Promise<void>, baseUrl: string, currentUser: User, users: User[], clients: Client[], editingMeeting: Meeting | null }) => {
   const [formData, setFormData] = useState<{
     title: string;
     description: string;
@@ -30,9 +32,11 @@ const MeetingModal = ({ isOpen, onClose, onSuccess, baseUrl, currentUser, users,
     participantRoles: {},
     createdBy: ''
   });
+    const isEditMode = !!editingMeeting;
     const [loading, setLoading] = useState(false);
     const [errors, setErrors] = useState<FormErrors>({});
     const [isClientDropdownOpen, setIsClientDropdownOpen] = useState(false);
+    const [showParticipantsDrawer, setShowParticipantsDrawer] = useState(false);
     const [clientSearchTerm, setClientSearchTerm] = useState('');
     const handleClientSelect = (client : Client) => {
       setFormData(prev => ({
@@ -91,46 +95,102 @@ const MeetingModal = ({ isOpen, onClose, onSuccess, baseUrl, currentUser, users,
       }));
     };
 
-    const validateForm = () => {
-      const newErrors: FormErrors = {};
-      if (!formData.title.trim()) newErrors.title = 'Title is required';
-      if (!formData.meetingDate) newErrors.meetingDate = 'Meeting date is required';
-      if (formData.durationMinutes <= 0) newErrors.durationMinutes = 'Please enter a valid duration';
-      
-      setErrors(newErrors);
-      return Object.keys(newErrors).length === 0;
-    };
+    useEffect(() => {
+      if (editingMeeting) {
+        const fetchMeetingParticipants = async () => {
+          try {
+            const response = await fetch(`${baseUrl}/api/meeting/${editingMeeting.id}/participants`);
+            if (response.ok) {
+              const participants = await response.json();
+              const participantIds = participants.map((p: any) => p.userId);
+              const participantRoles = participants.reduce((acc: Record<number, string>, p: any) => {
+                acc[p.userId] = p.role;
+                return acc;
+              }, {});
   
-    const handleSubmit = async () => {
-      if (!validateForm()) return;
+              setFormData({
+                title: editingMeeting.title,
+                description: editingMeeting.description || '',
+                meetingDate: editingMeeting.meetingDate,
+                durationMinutes: editingMeeting.durationMinutes,
+                location: editingMeeting.location || '',
+                meetingType: editingMeeting.meetingType,
+                status: editingMeeting.status,
+                clientId: editingMeeting.clientId || 0,
+                participantIds: participantIds,
+                participantRoles: participantRoles,
+                createdBy: editingMeeting.createdBy
+              });
+            }
+          } catch (error) {
+            console.error('Error fetching participants:', error);
+          }
+        };
   
-      setLoading(true);
+        fetchMeetingParticipants();
+      } else {
+        setFormData({
+          title: '',
+          description: '',
+          meetingDate: '',
+          durationMinutes: 0,
+          location: '',
+          meetingType: '',
+          status: '',
+          clientId: 0,
+          participantIds: [],
+          participantRoles: {},
+          createdBy: currentUser?.userId || ''
+        });
+      }
+    }, [editingMeeting, baseUrl, currentUser]);
+  
+    const handleSubmit = async (e: React.FormEvent) => {
+      e.preventDefault();
+  
       try {
-        const response = await fetch(`${baseUrl}/api/Meetings`, {
-          method: 'POST',
+        const url = isEditMode 
+          ? `${baseUrl}/api/Meeting/${editingMeeting.id}` 
+          : `${baseUrl}/api/Meeting`;
+        
+        const method = isEditMode ? 'PUT' : 'POST';
+  
+        const payload = {
+          Title: formData.title,
+          Description: formData.description || null,
+          MeetingDate: formData.meetingDate,
+          DurationMinutes: formData.durationMinutes,
+          Location: formData.location || null,
+          MeetingType: formData.meetingType,
+          Status: formData.status,
+          ClientId: formData.clientId || null,
+          ParticipantIds: formData.participantIds,
+          ...(isEditMode 
+            ? { ModifiedBy: currentUser?.userId || 1 }
+            : { CreatedBy: currentUser?.userId || 1 }
+          )
+        };
+  
+        const response = await fetch(url, {
+          method: method,
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({
-            ...formData,
-            clientId: formData.clientId || null,
-            participantIds: formData.participantIds.length > 0 ? formData.participantIds : null
-          }),
+          body: JSON.stringify(payload),
         });
   
         if (response.ok) {
-          const data = await response.json();
-          onSuccess?.(data);
-          handleClose();
+          toast.success(isEditMode ? 'Toplantı güncellendi' : 'Toplantı oluşturuldu');
+          if (onSuccess) {
+            await onSuccess();
+          }
         } else {
-          const error = await response.json();
-          alert('Error creating meeting: ' + (error.message || 'Unknown error'));
+          const errorData = await response.json();
+          toast.error(errorData.message || 'Bir hata oluştu');
         }
-      } catch (err) {
-        console.error('Error creating meeting:', err);
-        alert('An error occurred while creating the meeting');
-      } finally {
-        setLoading(false);
+      } catch (error) {
+        console.error('Error submitting meeting:', error);
+        toast.error('Toplantı kaydedilirken hata oluştu');
       }
     };
   
@@ -158,7 +218,7 @@ const MeetingModal = ({ isOpen, onClose, onSuccess, baseUrl, currentUser, users,
       <div className="fixed inset-0 bg-black/50 flex justify-end z-50">
       <div className="bg-white rounded-l-2xl w-full max-w-2xl h-full overflow-y-auto">
         <div className="flex items-center justify-between p-4 border-b sticky top-0 bg-white z-10">
-          <h2 className="text-lg font-semibold text-gray-900">Add New Meeting</h2>
+          <h2 className="text-lg font-semibold text-gray-900">{isEditMode ? 'Toplantıyı Düzenle' : 'Yeni Toplantı'}</h2>
           <button
             onClick={handleClose}
             className="p-1 hover:bg-gray-100 rounded transition-colors"
@@ -434,31 +494,44 @@ const MeetingModal = ({ isOpen, onClose, onSuccess, baseUrl, currentUser, users,
               </div>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                <UsersIcon className="inline h-4 w-4 mr-1" />
-                Participants ({formData.participantIds.length} selected)
-              </label>
-              <div className="border border-gray-300 rounded-lg max-h-48 overflow-y-auto">
-                {users.map(user => (
-                  <label
-                    key={user.userId}
-                    className="flex items-center px-3 py-2 hover:bg-gray-50 cursor-pointer border-b last:border-b-0"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={formData.participantIds.includes(user.userId)}
-                      onChange={() => handleParticipantToggle(user.userId)}
-                      className="mr-3 h-4 w-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
-                    />
-                    <span className="text-sm text-gray-700">{user.kullaniciAdi}</span>
-                  </label>
-                ))}
-                {users.length === 0 && (
-                  <p className="text-sm text-gray-500 p-3 text-center">No users found</p>
+            <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700 mb-3">
+                  Participants ({formData.participantIds.length} selected)
+                </label>
+
+                <button
+                  type="button"
+                  onClick={() => setShowParticipantsDrawer(true)}
+                  className="w-full px-4 py-3 border-2 border-dashed border-gray-300 rounded-xl hover:border-purple-400 hover:bg-purple-50 transition-all text-gray-600 hover:text-purple-600 font-medium flex items-center justify-center gap-2"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z" />
+                  </svg>
+                  Select Participants
+                </button>
+
+                {formData.participantIds.length > 0 && (
+                  <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <p className="text-xs text-blue-600 font-medium mb-2">Selected Participants:</p>
+                    <div className="flex flex-wrap gap-2">
+                      {users
+                        .filter(user => formData.participantIds.includes(user.userId))
+                        .map(user => (
+                          <span key={user.userId} className="inline-flex items-center px-3 py-1.5 rounded-full text-sm bg-white text-blue-700 border border-blue-300 shadow-sm">
+                            {user.kullaniciAdi}
+                            <button
+                              type="button"
+                              onClick={() => handleParticipantToggle(user.userId)}
+                              className="ml-2 hover:bg-blue-100 rounded-full p-0.5 transition-colors"
+                            >
+                              <X size={14} />
+                            </button>
+                          </span>
+                        ))}
+                    </div>
+                  </div>
                 )}
               </div>
-            </div>
           </div>
 
           <div className="flex gap-3 pt-6 border-t border-gray-200">
@@ -477,10 +550,20 @@ const MeetingModal = ({ isOpen, onClose, onSuccess, baseUrl, currentUser, users,
               className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium text-sm flex items-center justify-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Save className="h-4 w-4" />
-              {loading ? 'Saving...' : 'Save'}
+              {isEditMode ? 'Güncelle' : 'Oluştur'}
             </button>
           </div>
         </div>
+
+        {showParticipantsDrawer && (
+          <ParticipantsDrawer
+            users={users}
+            formData={formData}
+            handleParticipantToggle={handleParticipantToggle}
+            setFormData={setFormData}
+            onClose={() => setShowParticipantsDrawer(false)}
+          />
+        )}
       </div>
     </div>
       )

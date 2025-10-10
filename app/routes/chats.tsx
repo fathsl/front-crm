@@ -1,5 +1,5 @@
 import { useAtomValue } from "jotai";
-import { AlertCircle, ArrowLeft, Check, CheckCircle, Clock, DownloadIcon, Edit3, EyeIcon, FileIcon, FileText, Hourglass, ListChecksIcon, MessageSquare, Mic, MoreVertical, Paperclip, Pause, Play, Plus, PlusIcon, Search, Send, Share, Square, Trash2, Users, UsersIcon, Volume2, X } from "lucide-react";
+import { AlertCircle, ArrowLeft, Check, CheckCircle, ClipboardList, Clock, DownloadIcon, Edit3, EyeIcon, FileIcon, FileText, Hourglass, ListChecksIcon, MessageSquare, Mic, MoreVertical, Paperclip, Pause, Play, Plus, PlusIcon, Search, Send, Share, Square, Trash2, Users, UsersIcon, Volume2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"; 
 import { useTranslation } from 'react-i18next';
 import { formatFileSize, type SendMessageRequest, type User } from "~/help";
@@ -2251,20 +2251,25 @@ const ChatApplication: React.FC = () => {
               <ArrowLeft className="w-4 h-4" />
             </button>
             {selectedUser && (
-              <button
-              onClick={() => {
-                setShowCreateDiscussion(true);
-                setIsEditMode(false);
-                setEditingDiscussionId(null);
-                setNewDiscussionTitle('');
-                setNewDiscussionDescription('');
-                setSelectedClients([]);
-                setNewDiscussionStatus(DiscussionStatus.NotStarted);
-              }}
-              className="p-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition"
-            >
-              <Plus className="w-4 h-4" />
-            </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    setShowCreateDiscussion(true);
+                    setIsEditMode(false);
+                    setEditingDiscussionId(null);
+                    setNewDiscussionTitle('');
+                    setNewDiscussionDescription('');
+                    setSelectedClients([]);
+                    setNewDiscussionStatus(DiscussionStatus.NotStarted);
+                  }}
+                  className="p-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition"
+                >
+                  <Plus className="w-4 h-4" />
+                </button>
+                <button onClick={() => navigate(`/discussion-reports/${selectedUser?.userId}`)} className="p-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition">
+                  <ClipboardList className="w-4 h-4" />
+                </button>
+              </div>
             )}
           </div>
         </div>

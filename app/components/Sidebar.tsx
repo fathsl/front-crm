@@ -1,7 +1,9 @@
-import { BarChart3, CheckSquare2Icon, LogOut, MessageCircle, MessageSquare, UsersIcon, UsersRoundIcon, X, ChevronsLeft, ChevronsRight, Server, Wifi, MapPinMinusInside, MapIcon, Instagram } from 'lucide-react';
+import { useAtomValue } from 'jotai';
+import { BarChart3, CheckSquare2Icon, LogOut, MessageCircle, MessageSquare, UsersIcon, UsersRoundIcon, X, ChevronsLeft, ChevronsRight, Server, Wifi, MapPinMinusInside, MapIcon, Instagram, ChartNoAxesColumnIncreasing, ChartSpline } from 'lucide-react';
 import { type FC } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useLocation } from 'react-router';
+import { userAtom } from '~/utils/userAtom';
 
 export interface NavItem {
   id: string;
@@ -26,6 +28,7 @@ const Sidebar: FC<SidebarProps> = ({
 }) => {
   const { t } = useTranslation();
   const location = useLocation();
+  const currentUser = useAtomValue(userAtom)
   const navItems: NavItem[] = [
     { id: 'projects', label: 'Projects', icon: CheckSquare2Icon , category: 'Office Managment', href: '/projects' },
     { id: 'reporting', label: 'Reporting', icon: BarChart3, category: 'Primary', href: '/reporting' },
@@ -43,6 +46,9 @@ const Sidebar: FC<SidebarProps> = ({
     { id: 'logistics-history', label: 'Logistics History', icon: Truck, category: 'Operations', href: '/logistics/history' },
     { id: 'prescriptions', label: 'Prescriptions', icon: ClipboardList, category: 'Tools', href: '/prescriptions' }, */
     { id: 'users', label: 'Users', icon: UsersIcon, category: 'Tools', href: '/users' },
+    ...(currentUser?.role === 'Yonetici'
+      ? [{ id: 'progress', label: 'Progress', icon: ChartSpline, category: 'Tools', href: '/progress' }]
+      : []),
     { id: 'meetings', label: 'Meetings', icon: MessageSquare, category: 'Communication', href: '/meetings' },
     { id: 'chats', label: 'Chats', icon: MessageCircle, category: 'Communication', href: '/chats' },
     /* { id: 'media', label: 'Social Media', icon:Instagram, category: 'Communication', href: '/media' }, */

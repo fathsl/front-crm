@@ -152,7 +152,7 @@ export const AddClientModal = ({
                 />
             </div>
             </div>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -259,7 +259,7 @@ export const AddClientModal = ({
             <label className="block text-sm font-medium text-gray-700 mb-2">
             Add Resources (Optional)
             </label>
-            
+
             <div className="space-y-3 p-4 bg-gray-50 rounded-lg border border-gray-200">
             <div>
                 <input
@@ -270,7 +270,7 @@ export const AddClientModal = ({
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
             </div>
-            
+
             <div>
                 <textarea
                 value={resourceDescription}
@@ -280,14 +280,14 @@ export const AddClientModal = ({
                 rows={2}
                 />
             </div>
-            
+
             <input
                 type="file"
                 ref={fileInputRef}
                 onChange={handleFileSelect}
                 className="hidden"
             />
-            
+
             <button
                 type="button"
                 onClick={(e) => {
@@ -307,7 +307,7 @@ export const AddClientModal = ({
                 </div>
             </button>
             </div>
-            
+
             {pendingResources.length > 0 && (
             <div className="space-y-3">
             <div className="flex items-center justify-between w-full">
@@ -365,7 +365,7 @@ export const AddClientModal = ({
             ))}
             </div>
             )}
-            
+
             {resources.length > 0 && (
             <div className="space-y-2">
                 <label className="block text-sm font-medium text-gray-700">
@@ -394,7 +394,7 @@ export const AddClientModal = ({
             )}
         </div>
 
-            <div>
+        <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
                 Details
             </label>

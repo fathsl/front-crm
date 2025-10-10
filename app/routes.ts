@@ -20,5 +20,8 @@ export default [
     route("clients/:id", "routes/clients/[id].tsx"),
     route("profile", "routes/profile.tsx"),
     route("media", "routes/media.tsx"),
+    route("progress", "routes/progress.tsx"),
+    route("progress/:id", "routes/progress/[id].tsx"),
+    route("discussion-reports/:id", "routes/discussionReport/[id].tsx"),
   ]),
 ] satisfies RouteConfig;

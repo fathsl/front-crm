@@ -13,7 +13,7 @@ export default function Navbar({ onMenuToggle }: NavbarProps) {
   const { t, i18n } = useTranslation();
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [user] = useAtom(userAtom);
-  
+
   const { logout } = useAuth();
 
   const getRoleDisplayName = (role: string) => {
@@ -71,7 +71,7 @@ export default function Navbar({ onMenuToggle }: NavbarProps) {
               <img src='/unixpadel-logo.png' alt='logo' className="self-center w-8 h-8" />
             </a>
           </div>
-          
+
           <div className="flex items-center">
             <div className="flex items-center ml-3">
               <button
@@ -82,7 +82,7 @@ export default function Navbar({ onMenuToggle }: NavbarProps) {
                   {i18n.language === 'en' ? 'TR' : 'EN'}
                 </span>
               </button>
-              
+
               <div className="relative">
                 <button
                   onClick={() => setIsProfileOpen(!isProfileOpen)}
@@ -99,7 +99,7 @@ export default function Navbar({ onMenuToggle }: NavbarProps) {
                   </span>
                 </div>
                 </button>
-                
+
                 {isProfileOpen && (
                   <div className="absolute right-0 z-50 my-4 text-base list-none bg-white divide-y divide-gray-100 rounded shadow dark:bg-gray-700 dark:divide-gray-600">
                     <div className="px-4 py-3">

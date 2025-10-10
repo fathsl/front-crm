@@ -270,15 +270,15 @@ export interface Meeting {
   id: number;
   title: string;
   description: string | null;
-  meetingDate: string;
+  meetingDate: Date;
   durationMinutes: number;
   location: string | null;
   meetingType: string;
   status: string;
   createdBy: number;
   clientId: number | null;
-  createdAt: string;
-  modifiedAt: string;
+  createdAt: Date;
+  modifiedAt: Date;
   modifiedBy: number;
   clientName: string | null;
   clientCompanyName: string | null;
@@ -287,6 +287,18 @@ export interface Meeting {
   participantCount: number;
   createdByUserName: string | null;
   modifiedByUserName: string | null;
+  participantIds: number[];
+}
+
+export interface Participant {
+  participant_id  : number;
+  meeting_id : number;
+  user_id : number;
+  attendance_status: string;
+  added_at: string;
+  userId: number;
+  userName: string | null;
+  userEmail: string | null;
 }
 
 export interface Client {
