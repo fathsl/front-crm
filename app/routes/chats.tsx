@@ -160,7 +160,7 @@ const ChatApplication: React.FC = () => {
   const [taskMediaRecorder, setTaskMediaRecorder] = useState<MediaRecorder | null>(null);
   const isRecordingCanceled = useRef(false);
   const navigate = useNavigate();
-  const baseUrl = "https://api-crm-tegd.onrender.com";
+  const baseUrl = "http://localhost:5178";
   const isAdmin = currentUser?.role === "Yonetici";
 
   const [formData, setFormData] = useState<Omit<ExtendedClient, 'id'> & { 
@@ -354,25 +354,6 @@ const ChatApplication: React.FC = () => {
     );
     setFilteredClients(searched);
   }, [clients, clientSearchTerm, currentUser?.userId, isAdmin]);
-
-  const updateUnreadCount = useCallback(async (discussionId: number) => {
-    try {
-        const currentUserId = currentUser?.userId;
-        if (!currentUserId) return;
-        
-        const unreadCount = await getUnreadMessageCount(discussionId, currentUserId);
-        
-        setDiscussions(prevDiscussions => 
-            prevDiscussions.map(disc => 
-                disc.id === discussionId 
-                    ? { ...disc, unreadCount: unreadCount }
-                    : disc
-            )
-        );
-    } catch (error) {
-        console.error('Error updating unread count:', error);
-    }
-  }, [currentUser?.userId]);
 
   const fetchAssignedUsers = useCallback(async (discussionId: number) => {
     if (loadingAssignedUsers[discussionId]) return;

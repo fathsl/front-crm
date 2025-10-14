@@ -1,5 +1,5 @@
 import { useAtomValue } from 'jotai';
-import { BarChart3, CheckSquare2Icon, LogOut, MessageCircle, MessageSquare, UsersIcon, UsersRoundIcon, X, ChevronsLeft, ChevronsRight, Server, Wifi, MapPinMinusInside, MapIcon, Instagram, ChartNoAxesColumnIncreasing, ChartSpline } from 'lucide-react';
+import { BarChart3, CheckSquare2Icon, LogOut, MessageCircle, MessageSquare, UsersIcon, UsersRoundIcon, X, ChevronsLeft, ChevronsRight, Server, Wifi, MapPinMinusInside, MapIcon, Instagram, ChartNoAxesColumnIncreasing, ChartSpline, Percent } from 'lucide-react';
 import { type FC } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useLocation } from 'react-router';
@@ -41,7 +41,7 @@ const Sidebar: FC<SidebarProps> = ({
     { id: 'transaction-history', label: 'Transaction History', icon: History, category: 'Management', href: '/transactions' },
     { id: 'logistics', label: 'Logistics', icon: Box, category: 'Management', href: '/logistics' },
     { id: 'create-order', label: 'Create Order', icon: FilePlus, category: 'Operations', href: '/orders/new' },
-    { id: 'create-offer', label: 'Create Offer', icon: Percent, category: 'Operations', href: '/offers/new' },
+    
     { id: 'add-component', label: 'Add Component', icon: Package, category: 'Operations', href: '/components/new' },
     { id: 'logistics-history', label: 'Logistics History', icon: Truck, category: 'Operations', href: '/logistics/history' },
     { id: 'prescriptions', label: 'Prescriptions', icon: ClipboardList, category: 'Tools', href: '/prescriptions' }, */
@@ -49,6 +49,7 @@ const Sidebar: FC<SidebarProps> = ({
     ...(currentUser?.role === 'Yonetici'
       ? [{ id: 'progress', label: 'Progress', icon: ChartSpline, category: 'Tools', href: '/progress' }]
       : []),
+    // { id: 'offers', label: 'Offers', icon: Percent, category: 'Operations', href: '/offers' },
     { id: 'meetings', label: 'Meetings', icon: MessageSquare, category: 'Communication', href: '/meetings' },
     { id: 'chats', label: 'Chats', icon: MessageCircle, category: 'Communication', href: '/chats' },
     /* { id: 'media', label: 'Social Media', icon:Instagram, category: 'Communication', href: '/media' }, */

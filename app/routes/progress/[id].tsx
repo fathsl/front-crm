@@ -32,7 +32,7 @@ export default function UserProgressDashboard() {
         const month = date.getMonth();
         return { year, month, key: `${year}-${String(month + 1).padStart(2, '0')}` };
     };
-    
+
     const formatMonthYear = (key: string) => {
         const [year, month] = key.split('-');
         const monthNames = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 
@@ -50,12 +50,12 @@ export default function UserProgressDashboard() {
         try {
           setLoading(true);
           setError('');
-    
+
           const userResponse = await fetch(`${baseUrl}/api/User/${id}`);
           if (!userResponse.ok) throw new Error('Failed to fetch user');
           const userData = await userResponse.json();
           setUser(userData);
-    
+
           const clientsResponse = await fetch(`${baseUrl}/api/Clients`);
           let userClients: Client[] = [];
           if (clientsResponse.ok) {
@@ -63,14 +63,14 @@ export default function UserProgressDashboard() {
             userClients = clientsData.filter((c: Client) => c.id === parseInt(id || '0'));
             setStats(prev => ({ ...prev, clients: userClients.length }));
           }
-    
+
           const discussionsResponse = await fetch(`${baseUrl}/api/Chat/discussions/${id}`);
           let userDiscussions: Discussion[] = [];
           if (discussionsResponse.ok) {
             userDiscussions = await discussionsResponse.json();
             setStats(prev => ({ ...prev, discussions: userDiscussions.length }));
           }
-    
+
           const meetingsResponse = await fetch(`${baseUrl}/api/Meeting`);
           let userMeetings: Meeting[] = [];
           if (meetingsResponse.ok) {
@@ -78,15 +78,15 @@ export default function UserProgressDashboard() {
             userMeetings = meetingsData.filter((m: Meeting) => m.clientId === parseInt(id || '0'));
             setStats(prev => ({ ...prev, meetings: userMeetings.length }));
           }
-    
+
           const unreadResponse = await fetch(`${baseUrl}/api/Chat/users/unreadcounts`);
           if (unreadResponse.ok) {
             const unreadData = await unreadResponse.json();
             setStats(prev => ({ ...prev, unreadMessages: unreadData[id || '0'] || 0 }));
           }
-    
+
           const monthlyData: { [key: string]: MonthlyStats } = {};
-    
+
           userClients.forEach((client: Client) => {
             const dateField = client.createdAt;
             if (dateField) {
@@ -97,7 +97,7 @@ export default function UserProgressDashboard() {
               monthlyData[key].clients++;
             }
           });
-    
+
           userDiscussions.forEach((discussion: Discussion) => {
             const dateField = discussion.createdAt;
             if (dateField) {
@@ -108,7 +108,7 @@ export default function UserProgressDashboard() {
               monthlyData[key].discussions++;
             }
           });
-    
+
           userMeetings.forEach((meeting: Meeting) => {
             const dateField = meeting.meetingDate;
             if (dateField) {
@@ -119,13 +119,13 @@ export default function UserProgressDashboard() {
               monthlyData[key].meetings++;
             }
           });
-    
+
           const sortedMonthlyStats = Object.values(monthlyData).sort((a, b) => 
             b.month.localeCompare(a.month)
           );
     
           setMonthlyStats(sortedMonthlyStats);
-    
+
         } catch (err) {
           setError('Error fetching user data');
           console.error('Error fetching user data:', err);
@@ -133,7 +133,7 @@ export default function UserProgressDashboard() {
           setLoading(false);
         }
       };
-  
+
     if (loading) {
       return (
         <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -144,7 +144,7 @@ export default function UserProgressDashboard() {
         </div>
       );
     }
-  
+
     if (error) {
       return (
         <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -162,7 +162,7 @@ export default function UserProgressDashboard() {
         </div>
       );
     }
-  
+
     if (!user) {
       return (
         <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -178,7 +178,7 @@ export default function UserProgressDashboard() {
         </div>
       );
     }
-  
+
     const statCards = [
       {
         title: 'Clients',

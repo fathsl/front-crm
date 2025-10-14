@@ -1,5 +1,5 @@
 import { useAtomValue } from "jotai";
-import { Calendar, Mail, MessageSquare, SquareArrowOutUpRight, UsersIcon } from "lucide-react";
+import { ArrowUpRight, Calendar, Mail, MessageSquare, SquareArrowOutUpRight, UsersIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
@@ -144,128 +144,111 @@ export default function ProgressPage() {
         return userUnreadCounts[userId] || 0;
     };
 
+    const StatCard = ({ icon: Icon, label, value }: { icon: any; label: string; value: number }) => (
+    <div className="flex items-center justify-between py-3 px-4 border-b border-gray-200 last:border-b-0">
+      <div className="flex items-center gap-2">
+        <Icon className="w-4 h-4 text-gray-600" />
+        <span className="text-sm font-medium text-gray-700">{label}</span>
+      </div>
+      <span className="text-lg font-semibold text-black">{value}</span>
+    </div>
+  );
+
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
-        <div className="max-w-4xl mx-auto">
-        <div className="mb-4">
-          <h1 className="text-xl font-bold text-slate-800 mb-2">
-            Progress Dashboard
-          </h1>
-          <p className="text-slate-600">
-            View user activities and daily statistics
-          </p>
+      <div className="min-h-screen w-full bg-white">
+      <div className="sticky top-0 z-10 bg-white border-b border-gray-200">
+        <div className="w-full px-4 sm:px-6 lg:px-8 py-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl sm:text-4xl font-bold text-black mb-2">
+                Progress Dashboard
+              </h1>
+              <p className="text-gray-600 text-sm sm:text-base">
+                Track team activities and daily performance metrics
+              </p>
+            </div>
+          </div>
         </div>
+      </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-          {users.map((user) => {
-            const todayClientsCount = getClientsCreatedToday(user.userId);
-            const discussionCount = getDiscussionsCreatedTodayByUser(user.userId);
-            const meetingCount = getMeetingsCreatedTodayByUser(user.userId);
-            const unreadMessageCount = getUnreadMessageCount(user.userId);
-            return (
-              <div
-                key={user.userId}
-                className="bg-white rounded-lg shadow-sm border border-slate-200 hover:shadow-lg hover:border-slate-300 transition-all duration-300"
-              >
-                <div className="p-2 border-b border-slate-100">
-                  <div className="flex flex-row justify-between">
-                    <div className="flex items-center space-x-2">
-                        <div className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center border-2 border-slate-200">
-                        <span className="text-slate-700 font-semibold text-lg">
-                            {user.kullaniciAdi.charAt(0)}
-                        </span>
-                        </div>
-                        <div className="flex-1">
-                        <h3 className="text-slate-900 font-semibold text-lg mb-1">
-                            {user.kullaniciAdi}
+      <div className="w-full px-4 sm:px-6 lg:px-8 py-8">
+        {users.length > 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-4 sm:gap-6">
+            {users.map((user) => {
+              const todayClientsCount = getClientsCreatedToday(user.userId);
+              const discussionCount = getDiscussionsCreatedTodayByUser(user.userId);
+              const meetingCount = getMeetingsCreatedTodayByUser(user.userId);
+              const unreadMessageCount = getUnreadMessageCount(user.userId);
+
+              return (
+                <div
+                  key={user.userId}
+                  className="bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow-md transition-all duration-300"
+                >
+                  <div className="p-4 sm:p-6 border-b border-gray-200">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-full bg-gray-300 flex items-center justify-center flex-shrink-0 text-white font-bold text-lg">
+                        {user.kullaniciAdi.charAt(0)}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h3 className="text-lg font-semibold text-black truncate">
+                          {user.kullaniciAdi}
                         </h3>
-                        <p className="text-slate-500 text-sm">{user.email}</p>
-                        </div>
+                        <p className="text-sm text-gray-600 truncate">{user.email}</p>
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                <div className="p-2">
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between py-2 border-b border-slate-100">
-                      <div className="flex items-center space-x-2">
-                        <div className="w-8 h-8 bg-slate-50 rounded-lg flex items-center justify-center">
-                          <UsersIcon className="w-5 h-5 text-slate-600" />
-                        </div>
-                        <span className="text-slate-700 font-medium">Clients Today</span>
-                      </div>
-                      <span className="text-lg font-semibold text-slate-900 mr-2">
-                        {todayClientsCount}
-                        </span>
-                    </div>
+                  <div className="p-4 sm:p-6 space-y-0">
+                    <StatCard
+                      icon={UsersIcon}
+                      label="Clients Today"
+                      value={todayClientsCount}
+                    />
+                    <StatCard
+                      icon={MessageSquare}
+                      label="Discussions"
+                      value={discussionCount}
+                    />
+                    <StatCard
+                      icon={Calendar}
+                      label="Meetings"
+                      value={meetingCount}
+                    />
+                    <StatCard
+                      icon={Mail}
+                      label="Unread Messages"
+                      value={unreadMessageCount}
+                    />
+                  </div>
 
-                    <div className="flex items-center justify-between py-2 border-b border-slate-100">
-                      <div className="flex items-center space-x-2">
-                        <div className="w-8 h-8 bg-slate-50 rounded-lg flex items-center justify-center">
-                          <MessageSquare className="w-5 h-5 text-slate-600" />
-                        </div>
-                        <span className="text-slate-700 font-medium">Discussions</span>
-                      </div>
-                      <span className="text-lg font-semibold text-slate-900 mr-2">
-                        {discussionCount}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center justify-between py-2 border-b border-slate-100">
-                      <div className="flex items-center space-x-3">
-                        <div className="w-8 h-8 bg-slate-50 rounded-lg flex items-center justify-center">
-                          <Calendar className="w-5 h-5 text-slate-600" />
-                        </div>
-                        <span className="text-slate-700 font-medium">Meetings</span>
-                      </div>
-                      <span className="text-lg font-semibold text-slate-900 mr-2">
-                        {meetingCount}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center justify-between py-2">
-                      <div className="flex items-center space-x-3">
-                        <div className="w-8 h-8 bg-slate-50 rounded-lg flex items-center justify-center">
-                          <Mail className="w-5 h-5 text-slate-600" />
-                        </div>
-                        <span className="text-slate-700 font-medium">Unread Messages</span>
-                      </div>
-                      <span className="text-lg font-semibold text-slate-900 mr-2">
-                        {unreadMessageCount}
-                      </span>
-                    </div>
+                  <div className="px-4 sm:px-6 py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
+                    <p className="text-xs text-gray-600">Updated today</p>
+                    <button
+                      onClick={() => navigate(`/progress/${user.userId}`)}
+                      className="p-2 rounded-lg bg-gray-200 hover:bg-gray-300 text-black transition-all duration-200 flex-shrink-0"
+                    >
+                      <ArrowUpRight className="w-5 h-5" />
+                    </button>
                   </div>
                 </div>
-
-                <div className="py-1 px-2 bg-slate-50 border-t border-slate-100">
-                  <div className="flex flex-row justify-between items-center">
-                    <p className="text-slate-500 text-xs text-center">
-                        Last updated: Today
-                    </p>
-                    <div className="m-2">
-                        <button className="bg-slate-100 hover:bg-slate-200 text-slate-600 font-medium py-1 px-2 rounded-lg" onClick={() => navigate(`/progress/${user.userId}`)}>
-                            <SquareArrowOutUpRight className="w-5 h-5" />
-                        </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        {users.length === 0 && (
-          <div className="text-center py-12">
-            <UsersIcon className="w-16 h-16 text-slate-300 mx-auto mb-4" />
-            <h3 className="text-slate-600 text-lg font-medium mb-2">
+              );
+            })}
+          </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center py-16 sm:py-24">
+            <div className="w-16 h-16 rounded-full bg-gray-200 flex items-center justify-center mb-4">
+              <UsersIcon className="w-8 h-8 text-gray-600" />
+            </div>
+            <h3 className="text-xl sm:text-2xl font-semibold text-black mb-2">
               No users found
             </h3>
-            <p className="text-slate-400">
+            <p className="text-gray-600 text-center">
               Users will appear here when loaded
             </p>
           </div>
         )}
       </div>
-      </div>
+    </div>
     );
   }
