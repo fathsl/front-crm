@@ -377,6 +377,36 @@ export interface Discussion {
     latestMessageDate : Date;
 }
 
+export interface Category {
+  kategoriID: number;
+  kategoriAdi: string;
+  stok: number;
+  fiyat: number;
+  createdBy?: number;
+  createdAt?: Date;
+  updatedBy?: number;
+  updatedAt?: Date;
+}
+
+export enum BirimUnity {
+  Set = 1,
+  M=2,
+  M2=3,
+  Kg=4,
+  Pcs=5,
+}
+
+export interface Component {
+  bilesenID : number;
+  bilesenAdi: string;
+  birim: BirimUnity;
+  stok: number;
+  fiyat: number;
+  createdAt?: Date;
+  updatedAt?: Date;
+  adet?: number;
+}
+
 export const formatFileSize = (bytes: number): string => {
   if (bytes === 0) return '0 Bytes';
   const k = 1024;

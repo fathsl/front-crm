@@ -38,7 +38,7 @@ type DiscussionsByStatus = Record<DiscussionStatus, Discussion[]>;
 const DiscussionReportsPage: React.FC = () => {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
-    const baseUrl = "http://localhost:5178";
+    const baseUrl = "https://api-crm-tegd.onrender.com";
     const [discussions, setDiscussions] = useState<Discussion[]>([]);
     const [loading, setLoading] = useState(true);
     const [userName, setUserName] = useState('');

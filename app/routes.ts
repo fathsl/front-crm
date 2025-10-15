@@ -24,5 +24,6 @@ export default [
     route("progress/:id", "routes/progress/[id].tsx"),
     route("discussion-reports/:id", "routes/discussionReport/[id].tsx"),
     route("offers", "routes/offers.tsx"),
+    route("categories", "routes/categories.tsx"),
   ]),
 ] satisfies RouteConfig;

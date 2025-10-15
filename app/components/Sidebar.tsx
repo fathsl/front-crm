@@ -1,5 +1,5 @@
 import { useAtomValue } from 'jotai';
-import { BarChart3, CheckSquare2Icon, LogOut, MessageCircle, MessageSquare, UsersIcon, UsersRoundIcon, X, ChevronsLeft, ChevronsRight, Server, Wifi, MapPinMinusInside, MapIcon, Instagram, ChartNoAxesColumnIncreasing, ChartSpline, Percent } from 'lucide-react';
+import { BarChart3, CheckSquare2Icon, LogOut, MessageCircle, MessageSquare, UsersIcon, UsersRoundIcon, X, ChevronsLeft, ChevronsRight, Server, Wifi, MapPinMinusInside, MapIcon, Instagram, ChartNoAxesColumnIncreasing, ChartSpline, Percent, CombineIcon, Layers2Icon } from 'lucide-react';
 import { type FC } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useLocation } from 'react-router';
@@ -49,7 +49,10 @@ const Sidebar: FC<SidebarProps> = ({
     ...(currentUser?.role === 'Yonetici'
       ? [{ id: 'progress', label: 'Progress', icon: ChartSpline, category: 'Tools', href: '/progress' }]
       : []),
-    // { id: 'offers', label: 'Offers', icon: Percent, category: 'Operations', href: '/offers' },
+    ...(currentUser?.role === 'Yonetici'
+      ? [{ id: 'categories', label: 'Categories', icon: Layers2Icon, category: 'Operations', href: '/categories' }]
+      : []),
+    { id: 'offers', label: 'Offers', icon: Percent, category: 'Operations', href: '/offers' },
     { id: 'meetings', label: 'Meetings', icon: MessageSquare, category: 'Communication', href: '/meetings' },
     { id: 'chats', label: 'Chats', icon: MessageCircle, category: 'Communication', href: '/chats' },
     /* { id: 'media', label: 'Social Media', icon:Instagram, category: 'Communication', href: '/media' }, */
