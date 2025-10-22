@@ -1,6 +1,7 @@
-import { Check, ChevronLeft, ChevronRight, Plus, X } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Edit2, Plus, SearchIcon, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import type {  Category, Component } from "~/help";
+import { AddComponentDrawer } from "./AddComponentDrawer";
 
 export const AddComponentModal = ({
   category,
@@ -13,11 +14,19 @@ export const AddComponentModal = ({
   componentsByCategories: Component[];
   components: Component[];
   onClose: () => void;
-  onSubmit: (component: Component) => void;
+  onSubmit: (component: Component, isEdit: boolean) => void;
 }) => {
   const [selectedComponents, setSelectedComponents] = useState<number[]>([]);
+  const [componentDrawer, setComponentDrawer] = useState(false);
   const [showAddDrawer, setShowAddDrawer] = useState(false);
   const [step, setStep] = useState(1);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filteredComponents, setFilteredComponents] = useState(componentsByCategories);
+  const [filteredComponentsSelected, setFilteredComponentsSelected] = useState(components);
+  const [searchTermSelected, setSearchTermSelected] = useState('');
+  const [currentEditingComponent, setCurrentEditingComponent] = useState<Component | null>(null);
+
+  const baseUrl = "https://api-crm-tegd.onrender.com";
 
   useEffect(() => {
     if (showAddDrawer) {
@@ -25,13 +34,11 @@ export const AddComponentModal = ({
       setSelectedComponents(existingIds);
       setStep(1);
     }
-  }, [showAddDrawer, componentsByCategories]);
+  }, [showAddDrawer]);
 
-  const existingComponentIds = componentsByCategories.map(c => c.bilesenID);
-
-  const availableComponents = components.filter(
-    c => !existingComponentIds.includes(c.bilesenID)
-  );
+  useEffect(() => {
+    setFilteredComponents(componentsByCategories);
+  }, [componentsByCategories]);
 
   const toggleComponent = (componentId: number) => {
     setSelectedComponents(prev =>
@@ -45,24 +52,165 @@ export const AddComponentModal = ({
     return components.filter(c => selectedComponents.includes(c.bilesenID));
   };
 
-  const calculateTotalPrice = () => {
-    return getSelectedComponentsDetails().reduce((total, c) => total + (c.fiyat * (c.adet || 1)), 0);
-  };
-
-  const handleAddSelected = () => {
-    const componentsToAdd = components.filter(c => 
-      selectedComponents.includes(c.bilesenID)
+  const calculateNewComponentsTotal = () => {
+    const existingIds = componentsByCategories.map(c => c.bilesenID);
+    const newComponents = components.filter(c => 
+      selectedComponents.includes(c.bilesenID) && !existingIds.includes(c.bilesenID)
     );
-    componentsToAdd.forEach(component => onSubmit(component));
-    setSelectedComponents([]);
+    return newComponents.reduce((total, c) => total + (c.fiyat * (c.adet || 1)), 0);
   };
 
-  const handleFinish = () => {
+  const handleFinish = async () => {
+    if (!category) return;
+
     const newComponents = getSelectedComponentsDetails().filter(
-      c => !componentsByCategories.find(existing => existing.bilesenID === c.bilesenID)
+      c => !componentsByCategories.some(existing => existing.bilesenID === c.bilesenID)
     );
-    newComponents.forEach(component => onSubmit(component));
-    setShowAddDrawer(false);
+
+    if (newComponents.length === 0) {
+      setShowAddDrawer(false);
+      onClose();
+      return;
+    }
+
+    try {
+      const componentsToAdd = newComponents.map(c => ({
+        bilesenID: c.bilesenID,
+        adet: c.adet || 1
+      }));
+      await addComponentsToCategory(category.kategoriID, componentsToAdd);
+      newComponents.forEach(component => onSubmit(component, false));
+      setShowAddDrawer(false);
+      onClose();
+    } catch (error) {
+      console.error('Error adding components:', error);
+      alert('Failed to add components. Please try again.');
+    }
+  };
+
+  const handleComponentSubmit = (component: Component, isEdit: boolean) => {
+    onSubmit(component, isEdit);
+    setComponentDrawer(false);
+    setCurrentEditingComponent(null);
+  };
+
+  const handleSearch = (value: string) => {
+    setSearchTerm(value);
+    if (!value.trim()) {
+      setFilteredComponents(componentsByCategories);
+      return;
+    }
+    const searchLower = value.toLowerCase();
+    const filtered = componentsByCategories.filter(component =>
+      component.bilesenAdi?.toLowerCase().includes(searchLower) ||
+      component.fiyat?.toString().includes(searchLower) ||
+      component.stok?.toString().includes(searchLower)
+    );
+    setFilteredComponents(filtered);
+  };
+
+  const handleSearchSelected = (value: string) => {
+    setSearchTermSelected(value);
+    if (!value.trim()) {
+      setFilteredComponents(components);
+      return;
+    }
+    const searchLower = value.toLowerCase();
+    const filtered = components.filter(component =>
+      component.bilesenAdi?.toLowerCase().includes(searchLower) ||
+      component.fiyat?.toString().includes(searchLower) ||
+      component.stok?.toString().includes(searchLower)
+    );
+    setFilteredComponentsSelected(filtered);
+  };
+
+  const handleDrawerClose = () => {
+    setComponentDrawer(false);
+    setCurrentEditingComponent(null);
+  };
+
+  const handleAddComponent = () => {
+    setCurrentEditingComponent(null);
+    setComponentDrawer(true);
+  };
+
+  const handleEditComponent = (component: Component) => {
+    setCurrentEditingComponent(component);
+    setComponentDrawer(true);
+  };
+
+  const addComponentsToCategory = async (kategoriId: number, components: { bilesenID: number; adet: number }[]) => {
+    try {
+      const response = await fetch(`${baseUrl}/api/Bilesen/AddComponentsToCategory`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          kategoriID: kategoriId,
+          components: components.map(c => ({
+            bilesenID: c.bilesenID,
+            adet: c.adet
+          }))
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to add components');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error adding components:', error);
+      throw error;
+    }
+  };
+
+  const removeComponentFromCategory = async (kategoriId: number, bilesenId: number) => {
+    try {
+      const response = await fetch(
+        `${baseUrl}/api/Bilesen/RemoveComponentFromCategory?kategoriId=${kategoriId}&bilesenId=${bilesenId}`,
+        {
+          method: 'DELETE',
+          headers: {
+            'Content-Type': 'application/json',
+          }
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to remove component');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error removing component:', error);
+      throw error;
+    }
+  };
+
+  const handleDeleteComponent = async (component: Component) => {
+    if (!category) return;
+    const confirmDelete = window.confirm(
+      `Are you sure you want to remove "${component.bilesenAdi}" from this category?`
+    );
+    if (!confirmDelete) return;
+    try {
+      await removeComponentFromCategory(category.kategoriID, component.bilesenID);
+      
+      setFilteredComponents(prev => 
+        prev.filter(c => c.bilesenID !== component.bilesenID)
+      );
+      
+      setSelectedComponents(prev => 
+        prev.filter(id => id !== component.bilesenID)
+      );
+      
+      alert('Component removed successfully');
+    } catch (error) {
+      console.error('Error deleting component:', error);
+      alert('Failed to remove component. Please try again.');
+    }
   };
 
   return (
@@ -91,8 +239,13 @@ export const AddComponentModal = ({
                 {category.kategoriAdi}
               </p>
             )}
+            {category && (
+              <p className="text-xs text-gray-600 text-center mt-1">
+                {category.fiyat}{category.currency}
+              </p>
+            )}
           </div>
-          
+
           <button
             onClick={onClose}
             className="text-gray-400 hover:text-gray-600 transition-colors p-2"
@@ -113,7 +266,21 @@ export const AddComponentModal = ({
             </div>
           ) : (
             <div className="space-y-3">
-              {componentsByCategories.map((component) => (
+              <div className="mb-4 sm:mb-6">
+                <div className="relative w-full">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <SearchIcon className="h-4 w-4 text-gray-400" />
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Toplantı ara..."
+                    value={searchTerm}
+                    onChange={(e) => handleSearch(e.target.value)}
+                    className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                  />
+                </div>
+              </div>
+              {filteredComponents.map((component) => (
                 <div
                   key={component.bilesenID}
                   className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm hover:shadow-md transition-shadow"
@@ -140,12 +307,30 @@ export const AddComponentModal = ({
                     </div>
                     <div className="flex justify-between items-center text-sm">
                       <span className="text-gray-600">Price:</span>
-                      <span className="font-medium text-gray-900">₺{component.fiyat.toFixed(2)}</span>
+                      <span className="font-medium text-gray-900">{component.fiyat}{component.currency}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-sm">
+                      <span className="text-gray-600">Stock:</span>
+                      <span className="font-medium text-gray-900">{component.stok}</span>
                     </div>
                     <div className="flex justify-between items-center text-sm">
                       <span className="text-gray-600">Quantity:</span>
                       <span className="font-medium text-gray-900">{component.adet || 1}</span>
                     </div>
+                  </div>
+                  <div className="flex flex-row justify-between items-center bg-gray-100 rounded-lg w-full mt-2 h-12 px-4">
+                    <button 
+                      className="flex flex-row items-center gap-2 px-2 py-1" 
+                      onClick={() => handleEditComponent(component)}
+                    >
+                      <Edit2 className="w-4 h-4" />
+                      <span>Edit</span>
+                    </button>
+                    <div className="border border-gray-300 border-1 h-full"/>
+                    <button onClick={() => handleDeleteComponent(component)} className="flex flex-row items-center gap-2 px-2 py-1">
+                      <Trash2 className="w-4 h-4" />
+                      <span>Delete</span>
+                    </button>
                   </div>
                 </div>
               ))}
@@ -160,13 +345,17 @@ export const AddComponentModal = ({
             className="fixed inset-0 bg-black/50 z-[60]"
             onClick={() => setShowAddDrawer(false)}
           />
-
           <div className="fixed top-0 right-0 h-full w-full sm:w-96 bg-white shadow-2xl z-[70] flex flex-col animate-slide-in">
             <div className="p-4 border-b border-gray-200 bg-gray-50">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-bold text-gray-800">
+                <div className="flex flex-col items-start gap-2">
+                  <h2 className="text-lg font-bold text-gray-800">
                   {step === 1 ? 'Select Components' : 'Review & Confirm'}
                 </h2>
+                <span className="text-xs text-gray-600">
+                  {category?.fiyat}₺ + {calculateNewComponentsTotal()}₺ = {(category?.fiyat || 0) + calculateNewComponentsTotal()}₺
+                </span>
+                </div>
                 <button
                   onClick={() => setShowAddDrawer(false)}
                   className="text-gray-400 hover:text-gray-600 transition-colors p-2"
@@ -190,8 +379,20 @@ export const AddComponentModal = ({
                 <p className="text-sm text-gray-600 mb-4">
                   Select components for this category. Already assigned components are pre-selected.
                 </p>
+                <div className="relative w-full mb-2">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <SearchIcon className="h-4 w-4 text-gray-400" />
+                </div>
+                <input
+                  type="text"
+                  placeholder="Toplantı ara..."
+                  value={searchTermSelected}
+                  onChange={(e) => handleSearchSelected(e.target.value)}
+                  className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                />
+              </div>
                 <div className="space-y-2">
-                  {components.map((component) => {
+                  {filteredComponentsSelected.map((component) => {
                     const isSelected = selectedComponents.includes(component.bilesenID);
                     const isExisting = componentsByCategories.some(c => c.bilesenID === component.bilesenID);
                     
@@ -262,7 +463,7 @@ export const AddComponentModal = ({
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-600">Total Price:</span>
-                      <span className="font-semibold text-blue-600">₺{calculateTotalPrice().toFixed(2)}</span>
+                      <span className="font-semibold text-blue-600">{(category?.fiyat || 0) + calculateNewComponentsTotal()}</span>
                     </div>
                   </div>
                 </div>
@@ -271,7 +472,7 @@ export const AddComponentModal = ({
                 <div className="space-y-3">
                   {getSelectedComponentsDetails().map((component) => {
                     const isNew = !componentsByCategories.some(c => c.bilesenID === component.bilesenID);
-                    
+
                     return (
                       <div
                         key={component.bilesenID}
@@ -296,7 +497,7 @@ export const AddComponentModal = ({
                           </div>
                           <div>
                             <span className="text-gray-600">Price: </span>
-                            <span className="font-medium">₺{component.fiyat.toFixed(2)}</span>
+                            <span className="font-medium">{component.fiyat.toFixed(2)}{component.currency}</span>
                           </div>
                           <div>
                             <span className="text-gray-600">Qty: </span>
@@ -316,6 +517,15 @@ export const AddComponentModal = ({
 
             <div className="p-4 border-t border-gray-200 bg-gray-50">
               <div className="flex gap-3">
+                 {step === 1 && (
+                  <button
+                    onClick={handleAddComponent}
+                    className="flex items-center justify-center gap-2 px-4 py-3 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-100 transition-colors"
+                  >
+                    <Plus size={18} />
+                    Add
+                  </button>
+                )}
                 {step === 2 && (
                   <button
                     onClick={() => setStep(1)}
@@ -332,8 +542,10 @@ export const AddComponentModal = ({
                 >
                   {step === 1 ? (
                     <>
-                      Next
-                      <ChevronRight size={18} />
+                      <div className="flex items-center gap-2">
+                        <span>Next</span>
+                        <ChevronRight size={18} />
+                      </div>
                     </>
                   ) : (
                     <>
@@ -344,8 +556,18 @@ export const AddComponentModal = ({
                 </button>
               </div>
             </div>
+
           </div>
         </>
+      )}
+
+      {componentDrawer && category && (
+        <AddComponentDrawer
+          category={category}
+          onClose={handleDrawerClose}
+          onSubmit={handleComponentSubmit}
+          editingComponent={currentEditingComponent}
+        />
       )}
 
       <style>{`

@@ -11,12 +11,16 @@ type FormDataType = Omit<ExtendedClient, 'id'> & {
     file?: File;
 };
 export const AddClientModal = ({
-    modalMode,
-    formData,
-    setFormData,
-    open,
-    onClose,
-    onSubmit,
+  modalMode,
+  formData,
+  setFormData,
+  open,
+  onClose,
+  onSubmit,
+  existingResources,
+  pendingResources,
+  setPendingResources,
+  isLoadingResources,
 }: {
     modalMode: 'add' | 'edit';
     formData: FormDataType;
@@ -24,59 +28,67 @@ export const AddClientModal = ({
     open: boolean;
     onClose: () => void;
     onSubmit: (formData: FormDataType) => void;
-}) => {
-    const [showModal, setShowModal] = useState(false);
-    const [resourceTitle, setResourceTitle] = useState('');
-    const [resourceDescription, setResourceDescription] = useState('');
-    const [resources, setResources] = useState<Resource[]>([]);
-    const fileInputRef = useRef<HTMLInputElement | null>(null);
-    const resourceIdCounter = useRef(0);
-    const [selectedFile, setSelectedFile] = useState<File | null>(null);
-    const [pendingResources, setPendingResources] = useState<Array<{
+    existingResources?: Resource[];
+    pendingResources?: Array<{
         id: string;
         title: string;
         description: string;
         file?: File;
         audioFile?: Blob;
-    }>>([]);
-
+    }>;
+    setPendingResources?: React.Dispatch<React.SetStateAction<Array<{
+        id: string;
+        title: string;
+        description: string;
+        file?: File;
+        audioFile?: Blob;
+    }>>>;
+    isLoadingResources ?: boolean;
+    }) => {
+    const [showModal, setShowModal] = useState(false);
+    const [resourceTitle, setResourceTitle] = useState('');
+    const [resourceDescription, setResourceDescription] = useState('');
+    const fileInputRef = useRef<HTMLInputElement | null>(null);
+    
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         onSubmit(formData);
     };
 
     const handleUpdateResourceDetails = (id: string, field: 'title' | 'description', value: string) => {
+        if (!setPendingResources) return;
         setPendingResources(prev =>
             prev.map(r => r.id === id ? { ...r, [field]: value } : r)
         );
     };
 
     const handleRemovePendingResource = (id: string) => {
+        if (!setPendingResources) return;
         setPendingResources(prev => prev.filter(r => r.id !== id));
         toast.info('Resource removed');
     };
 
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
-        if (file) {
-            const tempId = `temp-${Date.now()}-${resourceIdCounter.current++}`;
-            
-            setPendingResources(prev => [...prev, {
-                id: tempId,
-                title: resourceTitle.trim() || file.name,
-                description: resourceDescription.trim(),
-                file: file,
-            }]);
-            
-            setResourceTitle('');
-            setResourceDescription('');
-            setSelectedFile(null);
-            if (fileInputRef.current) {
-                fileInputRef.current.value = '';
-            }
-            
-            toast.success(`File "${file.name}" added`);
+        if (!file) return;
+
+        const newResource = {
+        id: `temp_${Date.now()}`,
+        title: resourceTitle || file.name,
+        description: resourceDescription || '',
+        file: file
+        };
+
+        if (!setPendingResources) return;
+        setPendingResources(prev => [...prev, newResource]);
+        
+        setResourceTitle('');
+        setResourceDescription('');
+        if (fileInputRef.current) {
+        fileInputRef.current.value = '';
         }
+        
+        toast.success('Resource added to upload queue');
     };
 
     return (
@@ -308,18 +320,18 @@ export const AddClientModal = ({
             </button>
             </div>
 
-            {pendingResources.length > 0 && (
+            {(pendingResources?.length ?? 0) > 0 && (
             <div className="space-y-3">
             <div className="flex items-center justify-between w-full">
                 <label className="block text-sm font-medium text-gray-700">
-                Resources to Upload ({pendingResources.length})
+                Resources to Upload ({pendingResources?.length})
                 </label>
                 <span className="text-xs text-gray-500">
                 Will be uploaded when you create/update client
                 </span>
             </div>
 
-            {pendingResources.map((resource) => (
+            {pendingResources?.map((resource) => (
                 <div
                 key={resource.id}
                 className="p-3 bg-white rounded-lg border border-gray-200 space-y-2 w-full"
@@ -366,12 +378,12 @@ export const AddClientModal = ({
             </div>
             )}
 
-            {resources.length > 0 && (
+            {(existingResources?.length ?? 0) > 0 && (
             <div className="space-y-2">
                 <label className="block text-sm font-medium text-gray-700">
                 Existing Resources
                 </label>
-                {resources.map((resource) => (
+                {existingResources?.map((resource) => (
                 <div
                     key={resource.id}
                     className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200"

@@ -47,10 +47,8 @@ export default function Clients() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showModal, setShowModal] = useState(false);
-  const [modalMode, setModalMode] = useState('add');
+  const [modalMode, setModalMode] = useState<'add' | 'edit'>('add');
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
-  const [resourceDescription, setResourceDescription] = useState('');
-  const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   const [usersById, setUsersById] = useState<Record<string, any>>({});
   const currentUser = useAtomValue<User | null>(userAtom);
   const [showUserSelector, setShowUserSelector] = useState(false);
@@ -61,7 +59,6 @@ export default function Clients() {
   const [newDiscussionDescription, setNewDiscussionDescription] = useState('');
   const [isCreatingDiscussion, setIsCreatingDiscussion] = useState(false);
   const [discussions, setDiscussions] = useState<DiscussionWithLastTask[]>([]);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [showCreateDiscussion, setShowCreateDiscussion] = useState(false);
   const [resources, setResources] = useState<Resource[]>([]);
   const [isLoading, setIsLoading] = useState({
@@ -70,8 +67,6 @@ export default function Clients() {
     resources: false,
     tasks: false,
   });
-  const [resourceTitle, setResourceTitle] = useState('');
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const isAdmin = (currentUser?.permissionType === 'Yonetici') || (currentUser?.role === 'Yonetici');
   const { showToastForMessage } = useMessageToast(currentUser);
   const [selectedDiscussion, setSelectedDiscussion] = useState<Discussion | null>(null);
@@ -82,8 +77,6 @@ export default function Clients() {
     file?: File;
     audioFile?: Blob;
   }>>([]);
-
-  const resourceIdCounter = useRef(0);
 
   const filterByRole = (list: Client[]) => {
     if (isAdmin) return list;
@@ -166,26 +159,39 @@ export default function Clients() {
       }
     };
 
-  const fetchResources = useCallback(async (clientId: number) => {
-      if (!clientId) return;
-      
-      setIsLoading(prev => ({ ...prev, resources: true }));
-      try {
-        const response = await fetch(`${baseUrl}/api/clients/${clientId}/resources`);
-        
-        if (!response.ok) {
-          throw new Error('Failed to fetch resources');
+  const fetchResources = async (clientId: number) => {
+    if (!clientId) {
+      console.log('No client ID provided');
+      setResources([]);
+      return;
+    }
+  
+    console.log('Fetching resources for client:', clientId);
+    setIsLoading(prev => ({ ...prev, resources: true }));
+    
+    try {
+      const response = await fetch(`${baseUrl}/api/clients/${clientId}/resources`);
+    
+      if (!response.ok) {
+        if (response.status === 404) {
+          console.log('No resources found for client');
+          setResources([]);
+          return;
         }
-        
-        const data: Resource[] = await response.json();
-        setResources(data);
-      } catch (error) {
-        console.error('Error fetching resources:', error);
-        toast.error('Failed to load resources');
-      } finally {
-        setIsLoading(prev => ({ ...prev, resources: false }));
+        throw new Error(`Failed to fetch resources: ${response.status}`);
       }
-    }, [selectedClient?.id, baseUrl]);
+    
+      const data: Resource[] = await response.json();
+      console.log('Resources fetched:', data.length);
+      setResources(data);
+    } catch (error) {
+      console.error('Error fetching resources:', error);
+      setResources([]);
+      toast.error('Failed to load resources');
+    } finally {
+      setIsLoading(prev => ({ ...prev, resources: false }));
+    }
+  };
 
     useEffect(() => {
       if (selectedClient?.id) {
@@ -267,50 +273,80 @@ export default function Clients() {
   }, [clients, searchTerm, currentUser, isAdmin]);
 
   const uploadResourcesForClient = async (
-    clientId: number, 
-    resources: Array<{
-      title: string;
-      description: string;
-      file?: File;
-      audioFile?: Blob;
-    }>
-  ) => {
-    const uploadPromises = resources.map(async (resource) => {
-      const formData = new FormData();
-      formData.append('Title', resource.title);
-      formData.append('Description', resource.description);
-      formData.append('CreatedBy', currentUser?.userId?.toString() || '');
-      
-      if (resource.file) {
-        formData.append('file', resource.file);
-      } else if (resource.audioFile) {
-        const audioFile = new File([resource.audioFile], `recording_${Date.now()}.webm`, {
-          type: 'audio/webm'
-        });
-        formData.append('audioFile', audioFile);
-      }
-      
+  clientId: number, 
+  resources: Array<{
+    id: string;
+    title: string;
+    description: string;
+    file?: File;
+    audioFile?: Blob;
+  }>
+) => {
+  if (!resources || resources.length === 0) {
+    console.log('No resources to upload');
+    return;
+  }
+
+  console.log(`Starting upload of ${resources.length} resources for client ${clientId}`);
+
+  const uploadPromises = resources.map(async (resource, index) => {
+    const formData = new FormData();
+    
+    formData.append('Title', resource.title || 'Untitled Resource');
+    formData.append('Description', resource.description || '');
+    formData.append('CreatedBy', currentUser?.userId?.toString() || '1');
+    
+    if (resource.file) {
+      formData.append('file', resource.file);
+      console.log(`Resource ${index + 1}: Uploading file - ${resource.file.name}`);
+    } else if (resource.audioFile) {
+      const audioFile = new File(
+        [resource.audioFile], 
+        `recording_${Date.now()}.webm`, 
+        { type: 'audio/webm' }
+      );
+      formData.append('audioFile', audioFile);
+      console.log(`Resource ${index + 1}: Uploading audio recording`);
+    } else {
+      console.warn(`Resource ${index + 1}: No file or audio provided`, resource);
+      return null;
+    }
+    
+    try {
       const response = await fetch(`${baseUrl}/api/clients/${clientId}/resources`, {
         method: 'POST',
         body: formData
       });
       
       if (!response.ok) {
-        throw new Error('Failed to upload resource: ' + resource.title);
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `Failed to upload: ${resource.title}`);
       }
       
-      return response.json();
-    });
-    
-    try {
-      await Promise.all(uploadPromises);
-      toast.success(`${resources.length} resource(s) uploaded successfully`);
+      const result = await response.json();
+      console.log(`Resource ${index + 1} uploaded successfully:`, result);
+      return result;
     } catch (error) {
-      console.error('Error uploading resources:', error);
-      toast.error('Some resources failed to upload');
+      console.error(`Error uploading resource "${resource.title}":`, error);
       throw error;
     }
-  };
+  });
+  
+  try {
+    const results = await Promise.all(uploadPromises);
+    const successCount = results.filter(r => r !== null).length;
+    
+    if (successCount > 0) {
+      toast.success(`${successCount} resource(s) uploaded successfully`);
+    }
+    
+    return results;
+  } catch (error) {
+    console.error('Error uploading resources:', error);
+    toast.error('Some resources failed to upload');
+    throw error;
+  }
+};
 
   const handleSearch = (query: string) => {
     setSearchTerm(query);
@@ -319,7 +355,7 @@ export default function Clients() {
   const createClient = async (clientData: Client) => {
     try {
       const formData = new FormData();
-     
+    
       formData.append('First_name', clientData.first_name);
       formData.append('Last_name', clientData.last_name);
       formData.append('Phone', clientData.phone || '');
@@ -331,42 +367,68 @@ export default function Clients() {
       formData.append('ZipCode', clientData.zipCode || '');
       formData.append('VATNumber', clientData.VATNumber || '');
       formData.append('CreatedBy', clientData.createdBy?.toString() || '1');
-     
+    
       if (clientData.file) {
         formData.append('file', clientData.file);
       }
- 
+
+      console.log('Creating client with pending resources:', pendingResources.length);
+
       const response = await fetch(`${baseUrl}/api/Clients`, {
         method: 'POST',
         body: formData,
       });
       
-      if (response.ok) {
-        const result = await response.json();
-        
-        const clientId = result.id || result.clientId || result.Id || result.ClientId || result.client_id;
-        
-        if (!clientId) {
-          toast.error('Client created but ID not found');
-          return { success: false, message: 'Client ID not returned from server' };
-        }
-      
-        if (pendingResources.length > 0) {
-          toast.info(`Uploading ${pendingResources.length} resource(s)...`);
-          await uploadResourcesForClient(clientId, pendingResources);
-        }
-      
-        await fetchClients();
-        setPendingResources([]);
-        toast.success('Client and resources created successfully');
-        return { success: true, data: result };
-      } else {
-        const errorData = await response.json();
-        return { success: false, message: errorData.message || 'Server error occurred' };
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        return { 
+          success: false, 
+          message: errorData.message || 'Failed to create client' 
+        };
       }
+
+      const result = await response.json();
+      
+      const clientId = result.id || result.clientId || result.Id || 
+                      result.ClientId || result.client_id;
+      
+      if (!clientId) {
+        console.error('Client created but no ID returned:', result);
+        toast.error('Client created but ID not found');
+        return { 
+          success: false, 
+          message: 'Client ID not returned from server' 
+        };
+      }
+
+      console.log('Client created with ID:', clientId);
+    
+      if (pendingResources.length > 0) {
+        console.log(`Uploading ${pendingResources.length} resources for client ${clientId}`);
+        toast.info(`Uploading ${pendingResources.length} resource(s)...`);
+        
+        try {
+          await uploadResourcesForClient(clientId, pendingResources);
+          console.log('Resources uploaded successfully');
+        } catch (resourceError) {
+          console.error('Resource upload error:', resourceError);
+          toast.warning('Client created, but some resources failed to upload');
+        }
+      }
+    
+      await fetchClients();
+      
+      setPendingResources([]);
+      
+      toast.success('Client created successfully');
+      return { success: true, data: result, clientId };
+      
     } catch (err) {
-      console.error('Network error:', err);
-      return { success: false, message: 'Kullanıcı oluşturulurken hata oluştu - Network error' };
+      console.error('Network error creating client:', err);
+      return { 
+        success: false, 
+        message: 'Network error occurred while creating client' 
+      };
     }
   };
 
@@ -389,28 +451,50 @@ export default function Clients() {
       if (userData.file) {
         formData.append('file', userData.file);
       }
+
+      console.log('Updating client with pending resources:', pendingResources.length);
       
       const response = await fetch(`${baseUrl}/api/Clients/${clientId}`, {
         method: 'PUT',
         body: formData,
       });
       
-      if (response.ok) {
-        if (pendingResources.length > 0) {
-          toast.info(`Uploading ${pendingResources.length} new resource(s)...`);
-          await uploadResourcesForClient(clientId, pendingResources);
-        }
-        
-        await fetchClients();
-        setPendingResources([]);
-        toast.success('Client and resources updated successfully');
-        return { success: true };
-      } else {
-        const errorData = await response.json();
-        return { success: false, message: errorData.message };
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        return { 
+          success: false, 
+          message: errorData.message || 'Failed to update client' 
+        };
       }
+      
+      if (pendingResources.length > 0) {
+        console.log(`Uploading ${pendingResources.length} new resources for client ${clientId}`);
+        toast.info(`Uploading ${pendingResources.length} new resource(s)...`);
+        
+        try {
+          await uploadResourcesForClient(clientId, pendingResources);
+          console.log('New resources uploaded successfully');
+        } catch (resourceError) {
+          console.error('Resource upload error:', resourceError);
+          toast.warning('Client updated, but some resources failed to upload');
+        }
+      }
+      
+      await fetchClients();
+      
+      await fetchResources(clientId);
+      
+      setPendingResources([]);
+      
+      toast.success('Client updated successfully');
+      return { success: true };
+      
     } catch (err) {
-      return { success: false, message: 'Kullanıcı güncellenirken hata oluştu' };
+      console.error('Network error updating client:', err);
+      return { 
+        success: false, 
+        message: 'Network error occurred while updating client' 
+      };
     }
   };
 
@@ -436,12 +520,12 @@ export default function Clients() {
     }
   };
 
-  const handleSubmit =async (data: FormDataType) => {    
+  const handleSubmit = async (data: FormDataType) => {    
     if (!formData.first_name || !formData.last_name || !formData.email) {
-      alert('Lütfen zorunlu alanları doldurun');
+      toast.error('Please fill in all required fields (First Name, Last Name, Email)');
       return;
     }
-   
+  
     const currentUserId = currentUser?.userId || 1; 
     const clientData: Client = {
       ...formData,
@@ -451,7 +535,7 @@ export default function Clients() {
       modifiedAt: new Date(),
       createdAt: modalMode === 'add' ? new Date() : (formData.createdAt || new Date())
     };
-   
+  
     let result;
     if (modalMode === 'add') {
       result = await createClient(clientData);
@@ -462,9 +546,15 @@ export default function Clients() {
     if (result.success) {
       setShowModal(false);
       resetForm();
-      alert(modalMode === 'add' ? 'Kullanıcı başarıyla oluşturuldu' : 'Kullanıcı başarıyla güncellendi');
+      setResources([]);
+      setPendingResources([]);
+      toast.success(
+        modalMode === 'add' 
+          ? 'Client created successfully' 
+          : 'Client updated successfully'
+      );
     } else {
-      alert(result.message || 'An error occurred');
+      toast.error(result.message || 'An error occurred');
     }
   };
 
@@ -490,10 +580,11 @@ export default function Clients() {
     setSelectedClient(null);
   };
 
-  const openEditModal = (client: Client) => {
+  const openEditModal = async (client: Client) => {
     const clientData = client as ExtendedClient;
     setSelectedClient(clientData);
     setModalMode('edit');
+    
     setFormData({
       first_name: clientData.first_name,
       last_name: clientData.last_name,
@@ -512,6 +603,14 @@ export default function Clients() {
       city: clientData.city,
       fileUrl: clientData.fileUrl
     });
+    
+    setPendingResources([]);
+    
+    if (clientData.id) {
+      console.log('Fetching resources for client:', clientData.id);
+      await fetchResources(clientData.id);
+    }
+    
     setShowModal(true);
   };
 
@@ -894,14 +993,21 @@ export default function Clients() {
     </div>
 
     {showModal && (
-    <AddClientModal
-      modalMode="add"
-      formData={formData}
-      setFormData={setFormData}
-      open={showModal}
-      onClose={() => setShowModal(false)}
-      onSubmit={handleSubmit}
-    />
+      <AddClientModal
+        modalMode={modalMode}
+        formData={formData}
+        setFormData={setFormData}
+        open={showModal}
+        onClose={() => {
+          setShowModal(false);
+          resetForm();
+        }}
+        onSubmit={handleSubmit}
+        existingResources={resources}
+        pendingResources={pendingResources}
+        setPendingResources={setPendingResources}
+        isLoadingResources={isLoading.resources}
+      />
     )}
 
     {showUserSelector && (

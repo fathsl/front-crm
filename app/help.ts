@@ -186,7 +186,7 @@ export interface FilteredOrderDto {
     orderDate: Date | null;
     productionDate: Date | null;
   }
-  
+
 export interface FilterOptions {
     customers: Array<{ Id: number; Name: string }>;
     countries: string[];
@@ -382,6 +382,7 @@ export interface Category {
   kategoriAdi: string;
   stok: number;
   fiyat: number;
+  currency: string;
   createdBy?: number;
   createdAt?: Date;
   updatedBy?: number;
@@ -399,12 +400,14 @@ export enum BirimUnity {
 export interface Component {
   bilesenID : number;
   bilesenAdi: string;
-  birim: BirimUnity;
+  birim: string;
   stok: number;
   fiyat: number;
   createdAt?: Date;
   updatedAt?: Date;
   adet?: number;
+  kategoriID?: number;
+  currency?: string;
 }
 
 export const formatFileSize = (bytes: number): string => {

@@ -2,6 +2,7 @@ import { useAtomValue } from "jotai";
 import { Calendar, Edit2, Eye, PlusIcon, SearchIcon, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { AddCategoryDrawer } from "~/components/AddCategoryDrawer";
 import { AddCategoryModal } from "~/components/AddCategoryModal";
 import { AddComponentModal } from "~/components/AddComponentModal";
 import type { Category, Component, User } from "~/help";
@@ -10,17 +11,21 @@ import { userAtom } from "~/utils/userAtom";
 const CategoriesPage = () => {
   const { t } = useTranslation();
   const currentUser = useAtomValue(userAtom) as unknown as User;
-  const baseUrl = "https://api-crm-tegd.onrender.com";
   const [categories, setCategories] = useState<Category[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
   const [componentsByCategories, setComponentsByCategories] = useState<Component[]>([]);
   const [components, setComponents] = useState<Component[]>([]);
   const [filteredCategories, setFilteredCategories] = useState<Category[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
   const [loading, setLoading] = useState(false);
-  const [showModal, setShowModal] = useState(false);
+  const [componentsLoading, setComponentsLoading] = useState(false);
+  const [editingComponent, setEditingComponent] = useState<Component | null>(null);
+  const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [componentModal, setComponentModal] = useState(false);
   const [error, setError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
+
+  const baseUrl = "https://api-crm-tegd.onrender.com";
 
   const fetchCategories = async () => {
     try {
@@ -39,9 +44,27 @@ const CategoriesPage = () => {
     }
   };
 
-  const fetchComponentsByCategories = async (categoryId: number) => {
+  const fetchUsers = async () => {
     try {
       setLoading(true);
+      const response = await fetch(`${baseUrl}/api/User`);
+      if (response.ok) {
+        const data = await response.json();
+        setUsers(data);        
+      } else {
+        throw new Error('Failed to fetch users');
+      }
+    } catch (err) {
+      setError('Kullanıcılar yüklenirken hata oluştu');
+      console.error('Error fetching users:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchComponentsByCategories = async (categoryId: number) => {
+    try {
+      setComponentsLoading(true);
       setError('');
       const response = await fetch(`${baseUrl}/api/Bilesen/ByCategory/${categoryId}`);
       if (!response.ok) throw new Error('Bileşenler yüklenemedi');
@@ -51,7 +74,7 @@ const CategoriesPage = () => {
       setError('Bileşenler yüklenirken bir hata oluştu');
       console.error(error);
     } finally {
-      setLoading(false);
+      setComponentsLoading(false);
     }
   };
 
@@ -74,12 +97,13 @@ const CategoriesPage = () => {
   useEffect(() => {
     fetchCategories();
     fetchComponents();
+    fetchUsers();
   }, []);
 
   const openComponentModal = async (category: Category) => {
     setSelectedCategory(category);
-    setComponentModal(true);
     await fetchComponentsByCategories(category.kategoriID);
+    setComponentModal(true);
   };
 
   const handleSearch = (value: string) => {
@@ -99,12 +123,12 @@ const CategoriesPage = () => {
 
   const handleAddCategory = () => {
     setSelectedCategory(null);
-    setShowModal(true);
+    setShowCategoryModal(true);
   };
 
   const handleEditCategory = (category: Category) => {
     setSelectedCategory(category);
-    setShowModal(true);
+    setShowCategoryModal(true);
   };
 
   const handleDeleteCategory = async (id: number) => {
@@ -119,28 +143,6 @@ const CategoriesPage = () => {
       } catch (error) {
         setError('Kategori silinirken bir hata oluştu');
       }
-    }
-  };
-
-  const handleCategorySubmit = async (category: Category) => {
-    try {
-      setLoading(true);
-      setError('');
-      const response = await fetch(`${baseUrl}/api/Categories`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(category),
-      });
-      if (!response.ok) throw new Error('Kategori ekleme başarısız');
-      const data = await response.json();
-      setCategories([...categories, data]);
-      setShowModal(false);
-    } catch (error) {
-      setError('Kategori eklendiğinde bir hata oluştu');
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -159,26 +161,31 @@ const CategoriesPage = () => {
     }).format(value);
   };
 
-  const handleComponentSubmit = async (component: Component) => {
-    try {
-      setLoading(true);
-      setError('');
-      const response = await fetch(`${baseUrl}/api/Components`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(component),
-      });
-      if (!response.ok) throw new Error('Component ekleme başarısız');
-      const data = await response.json();
-      setComponents([...components, data]);
-      setComponentModal(false);
-    } catch (error) {
-      setError('Component eklendiğinde bir hata oluştu');
-    } finally {
-      setLoading(false);
+  const handleComponentSubmit = (component: Component, isEdit: boolean) => {
+    if (isEdit) {
+      setComponentsByCategories(prev =>
+        prev.map(c => c.bilesenID === component.bilesenID ? component : c)
+      );
+    } else {
+      setComponentsByCategories(prev => [...prev, component]);
     }
+
+    setComponentModal(false);
+    setEditingComponent(null);
+  };
+
+  const handleCategorySuccess = () => {
+    fetchCategories();
+    setShowCategoryModal(false);
+  };
+
+  const getUserNameById = (userId: number | undefined) => {
+    if (!userId || userId === 0) return 'Unknown';
+    
+    const user = users.find(u => u.userId === userId);
+    if (!user) return 'Unknown';
+    
+    return `${user.fullName}`;
   };
 
   return (
@@ -291,10 +298,7 @@ const CategoriesPage = () => {
 
                   <div className="pt-2 border-t border-gray-200">
                     <p className="text-xs text-gray-500">
-                      {category.createdBy && category.createdBy !== 0
-                        ? `Created by: ${category.createdBy}`
-                        : 'Created by: Unknown'
-                      }
+                      Created by: {getUserNameById(category.createdBy)}
                     </p>
                     <p className="text-xs text-gray-400 mt-1">
                       {formatDate(category.createdAt || new Date())}
@@ -304,7 +308,7 @@ const CategoriesPage = () => {
                   {category.updatedAt !== category.createdAt && (
                     <div className="text-xs text-gray-500">
                       {category.updatedBy
-                        ? `Updated by: ${category.updatedBy}`
+                        ? `Updated by: ${getUserNameById(category.updatedBy)}`
                         : ''
                       }
                       {category.updatedAt && (
@@ -322,7 +326,7 @@ const CategoriesPage = () => {
                     className="w-full bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs sm:text-sm font-medium py-2 rounded-lg transition-colors flex items-center justify-center gap-2"
                   >
                     <Eye className="h-4 w-4" />
-                    <span>Add Characteristic</span>
+                    <span>Add Components</span>
                   </button>
                 </div>
               </div>
@@ -346,11 +350,13 @@ const CategoriesPage = () => {
         />
       )}
 
-      {showModal && (
-        <AddCategoryModal
+      {showCategoryModal && (
+        <AddCategoryDrawer
+          isOpen={showCategoryModal}
+          onClose={() => setShowCategoryModal(false)}
           category={selectedCategory}
-          onClose={() => setShowModal(false)}
-          onSubmit={handleCategorySubmit}
+          currentUserId={currentUser.userId}
+          onSuccess={handleCategorySuccess}
         />
       )}
     </div>
