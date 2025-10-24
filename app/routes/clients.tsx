@@ -25,7 +25,7 @@ export interface ExtendedClient extends Client {
   modifiedBy: number;
   imageUrl: string;
   zipCode: string;
-  VATNumber: string;
+  vatNumber: string;
   address: string;
   city: string;
   fileUrl: string;
@@ -101,13 +101,13 @@ export default function Clients() {
     modifiedBy: 0,
     imageUrl: '',
     zipCode: '',
-    VATNumber: '',
+    vatNumber: '',
     address: '',
     city: '',
     fileUrl: '',
   });
 
-  const baseUrl = "https://api-crm-tegd.onrender.com";
+  const baseUrl = "http://localhost:5178";
 
   const fetchClients = async () => {
     try {
@@ -116,6 +116,7 @@ export default function Clients() {
       if (response.ok) {
         const data = await response.json();
         setClients(data);
+        
         const visible = filterByRole(data);
         setFilteredClients(visible);
       } else {
@@ -137,7 +138,6 @@ export default function Clients() {
           const data = await response.json();
           const filteredUsers = data.filter((user: User) => user.userId !== currentUser?.userId).sort((a: User, b: User) => a.fullName.localeCompare(b.fullName));
           setUsers(filteredUsers);
-          console.log("users", filteredUsers);
         } else {
           throw new Error('Failed to fetch users');
         }
@@ -161,12 +161,10 @@ export default function Clients() {
 
   const fetchResources = async (clientId: number) => {
     if (!clientId) {
-      console.log('No client ID provided');
       setResources([]);
       return;
     }
   
-    console.log('Fetching resources for client:', clientId);
     setIsLoading(prev => ({ ...prev, resources: true }));
     
     try {
@@ -174,7 +172,6 @@ export default function Clients() {
     
       if (!response.ok) {
         if (response.status === 404) {
-          console.log('No resources found for client');
           setResources([]);
           return;
         }
@@ -182,7 +179,6 @@ export default function Clients() {
       }
     
       const data: Resource[] = await response.json();
-      console.log('Resources fetched:', data.length);
       setResources(data);
     } catch (error) {
       console.error('Error fetching resources:', error);
@@ -365,7 +361,7 @@ export default function Clients() {
       formData.append('City', clientData.city || '');
       formData.append('Address', clientData.address || '');
       formData.append('ZipCode', clientData.zipCode || '');
-      formData.append('VATNumber', clientData.VATNumber || '');
+      formData.append('VATNumber', clientData.vatNumber || '');
       formData.append('CreatedBy', clientData.createdBy?.toString() || '1');
     
       if (clientData.file) {
@@ -445,7 +441,7 @@ export default function Clients() {
       formData.append('City', userData.city || '');
       formData.append('Address', userData.address || '');
       formData.append('ZipCode', userData.zipCode || '');
-      formData.append('VATNumber', userData.VATNumber || '');
+      formData.append('VATNumber', userData.vatNumber || '');
       formData.append('ModifiedBy', userData.modifiedBy?.toString() || '1');
       
       if (userData.file) {
@@ -574,7 +570,7 @@ export default function Clients() {
       modifiedBy: 0,
       imageUrl: '',
       zipCode: '',
-      VATNumber: '',
+      vatNumber: '',
       fileUrl: ''
     });
     setSelectedClient(null);
@@ -598,7 +594,7 @@ export default function Clients() {
       modifiedBy: clientData.modifiedBy,
       imageUrl: clientData.imageUrl,
       zipCode: clientData.zipCode,
-      VATNumber: clientData.VATNumber,
+      vatNumber: clientData.vatNumber,
       address: clientData.address,
       city: clientData.city,
       fileUrl: clientData.fileUrl
@@ -927,10 +923,10 @@ export default function Clients() {
             <div className="pt-3 border-t border-gray-100 space-y-3">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-4">
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs sm:text-sm text-gray-600">
-                  {client.VATNumber && (
+                  {client.vatNumber && (
                     <div className="flex items-center gap-1.5">
                       <FileText className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-gray-400 flex-shrink-0" />
-                      <span className="truncate">VAT: {client.VATNumber}</span>
+                      <span className="truncate">VAT: {client.vatNumber}</span>
                     </div>
                   )}
                   
@@ -1078,7 +1074,7 @@ export default function Clients() {
                 ))}
             </div>
           </div>
-          
+
           <div className="p-4 border-t bg-gray-50">
             <button
               onClick={handleConfirmUserSelection}

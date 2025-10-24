@@ -49,7 +49,7 @@ export const AddClientModal = ({
     const [resourceTitle, setResourceTitle] = useState('');
     const [resourceDescription, setResourceDescription] = useState('');
     const fileInputRef = useRef<HTMLInputElement | null>(null);
-    
+
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         onSubmit(formData);
@@ -81,13 +81,13 @@ export const AddClientModal = ({
 
         if (!setPendingResources) return;
         setPendingResources(prev => [...prev, newResource]);
-        
+
         setResourceTitle('');
         setResourceDescription('');
         if (fileInputRef.current) {
         fileInputRef.current.value = '';
         }
-        
+
         toast.success('Resource added to upload queue');
     };
 
@@ -114,12 +114,12 @@ export const AddClientModal = ({
                 First Name *
                 </label>
                 <input
-                type="text"
-                value={formData.first_name}
-                onChange={(e) => setFormData({...formData, first_name: e.target.value})}
-                required
-                className="w-full px-4 py-2 text-black border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow duration-200 hover:shadow-sm"
-                placeholder="Enter first name"
+                    type="text"
+                    value={formData.first_name}
+                    onChange={(e) => setFormData({...formData, first_name: e.target.value})}
+                    required
+                    className="w-full px-4 py-2 text-black border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow duration-200 hover:shadow-sm"
+                    placeholder="Enter first name"
                 />
             </div>
             <div>
@@ -127,12 +127,12 @@ export const AddClientModal = ({
                 Last Name *
                 </label>
                 <input
-                type="text"
-                value={formData.last_name}
-                onChange={(e) => setFormData({...formData, last_name: e.target.value})}
-                required
-                className="w-full px-4 py-2 text-black border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow duration-200 hover:shadow-sm"
-                placeholder="Enter last name"
+                    type="text"
+                    value={formData.last_name}
+                    onChange={(e) => setFormData({...formData, last_name: e.target.value})}
+                    required
+                    className="w-full px-4 py-2 text-black border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow duration-200 hover:shadow-sm"
+                    placeholder="Enter last name"
                 />
             </div>
             </div>
@@ -143,12 +143,12 @@ export const AddClientModal = ({
                 Email *
                 </label>
                 <input
-                type="email"
-                value={formData.email}
-                onChange={(e) => setFormData({...formData, email: e.target.value})}
-                required
-                className="w-full px-4 py-2 text-black border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow duration-200 hover:shadow-sm"
-                placeholder="Enter email address"
+                    type="email"
+                    value={formData.email}
+                    onChange={(e) => setFormData({...formData, email: e.target.value})}
+                    required
+                    className="w-full px-4 py-2 text-black border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow duration-200 hover:shadow-sm"
+                    placeholder="Enter email address"
                 />
             </div>
             <div>
@@ -156,11 +156,11 @@ export const AddClientModal = ({
                 Phone
                 </label>
                 <input
-                type="tel"
-                value={formData.phone}
-                onChange={(e) => setFormData({...formData, phone: e.target.value})}
-                className="w-full px-4 py-2 text-black border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow duration-200 hover:shadow-sm"
-                placeholder="Enter phone number"
+                    type="tel"
+                    value={formData.phone}
+                    onChange={(e) => setFormData({...formData, phone: e.target.value})}
+                    className="w-full px-4 py-2 text-black border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow duration-200 hover:shadow-sm"
+                    placeholder="Enter phone number"
                 />
             </div>
             </div>
@@ -231,8 +231,8 @@ export const AddClientModal = ({
                 </label>
                 <input
                 type="text"
-                value={formData.VATNumber || ''}
-                onChange={(e) => setFormData({...formData, VATNumber: e.target.value})}
+                value={formData.vatNumber || ''}
+                onChange={(e) => setFormData({...formData, vatNumber: e.target.value})}
                 className="w-full px-4 py-2 text-black border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow duration-200 hover:shadow-sm"
                 placeholder="Enter VAT number"
                 />
@@ -279,7 +279,7 @@ export const AddClientModal = ({
                 value={resourceTitle}
                 onChange={(e) => setResourceTitle(e.target.value)}
                 placeholder="Resource Title (optional)"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black"
                 />
             </div>
 
@@ -288,7 +288,7 @@ export const AddClientModal = ({
                 value={resourceDescription}
                 onChange={(e) => setResourceDescription(e.target.value)}
                 placeholder="Resource Description (optional)"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black"
                 rows={2}
                 />
             </div>

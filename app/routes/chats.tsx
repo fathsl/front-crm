@@ -158,6 +158,7 @@ const ChatApplication: React.FC = () => {
   const taskAudioStreamRef = useRef<MediaStream | null>(null);
   const taskRecordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const [taskMediaRecorder, setTaskMediaRecorder] = useState<MediaRecorder | null>(null);
+  const [isSendingTask, setIsSendingTask] = useState(false);
   const isRecordingCanceled = useRef(false);
   const navigate = useNavigate();
   const baseUrl = "https://api-crm-tegd.onrender.com";
@@ -180,7 +181,7 @@ const ChatApplication: React.FC = () => {
     modifiedBy: 0,
     imageUrl: '',
     zipCode: '',
-    VATNumber: '',
+    vatNumber: '',
     address: '',
     city: '',
     fileUrl: '',
@@ -1028,24 +1029,6 @@ const ChatApplication: React.FC = () => {
     }
   };
 
-  const getUnreadMessageCount = async (discussionId: number, userId: number) => {
-    try {
-      const response = await fetch(`${baseUrl}/api/Chat/discussions/${discussionId}/unreadcount?userId=${userId}`, {
-        headers: {
-          'Content-Type': 'application/json',
-        }
-      });
-      if (!response.ok) {
-        throw new Error(`Failed to get unread count: ${response.statusText}`);
-      }
-      const count = await response.json();
-      return count;
-    } catch (error) {
-      console.error('Error getting unread message count:', error);
-      return 0;
-    }
-  };
-
   useEffect(() => {
     const currentUserId = currentUser?.userId;
     if (!currentUserId || filteredUsers.length === 0 || currentView !== 'users') return;
@@ -1436,16 +1419,6 @@ const ChatApplication: React.FC = () => {
     }
   };
 
-  const stopVoiceMessage = (message: Message) => {
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.currentTime = 0;
-      URL.revokeObjectURL(audioRef.current.src);
-      audioRef.current = null;
-      setPlayingVoiceId(null);
-    }
-  };
-
   const downloadFile = async (messageId: number, fileName: string) => {
     try {
       const response = await fetch(`${baseUrl}/api/Chat/messages/${messageId}/file`, {
@@ -1614,9 +1587,10 @@ const ChatApplication: React.FC = () => {
     closeTaskDrawer: () => void,
     baseUrl: string,
     clientIds: number[],
+    setIsSendingTask: React.Dispatch<React.SetStateAction<boolean>>
   ) => {
     if (!taskContent.trim() && !taskFile && !taskAudioBlob) return;
-
+    setIsSendingTask(true);
     const taskMessageData = {
       discussionId: selectedDiscussion?.id ?? 0,
       senderId: currentUser?.userId ?? 0,
@@ -1737,6 +1711,9 @@ const ChatApplication: React.FC = () => {
       console.error('Error sending task message:', error);
       alert('Failed to send task message');
     }
+    finally {
+    setIsSendingTask(false);
+    }
   };
 
   const startTaskRecording = async () => {
@@ -1824,7 +1801,7 @@ const ChatApplication: React.FC = () => {
       formData.append('City', clientData.city || '');
       formData.append('Address', clientData.address || '');
       formData.append('ZipCode', clientData.zipCode || '');
-      formData.append('VATNumber', clientData.VATNumber || '');
+      formData.append('vatNumber', clientData.vatNumber || '');
       formData.append('CreatedBy', clientData.createdBy?.toString() || '1');
      
       if (clientData.file) {
@@ -2090,7 +2067,7 @@ const ChatApplication: React.FC = () => {
       modifiedBy: 0,
       imageUrl: '',
       zipCode: '',
-      VATNumber: '',
+      vatNumber: '',
       fileUrl: ''
     });
   };
@@ -2483,18 +2460,18 @@ const ChatApplication: React.FC = () => {
                           e.stopPropagation();
                           handleDownloadExcel(discussion.id, discussion.title);
                         }}
-                        className="flex-1 sm:flex-none inline-flex items-center justify-center px-1 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white text-xs sm:text-sm font-medium transition-all duration-200 hover:scale-105 active:scale-95 shadow-sm min-h-[44px]"
+                        className="flex-1 sm:flex-none inline-flex items-center justify-center px-2 py-1 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white text-xs sm:text-sm font-medium transition-all duration-200 hover:scale-105 active:scale-95 shadow-sm min-h-[44px]"
                         title="Download Tasks Excel"
                       >
                         <DownloadIcon size={12} className="mr-1 flex-shrink-0" />
-                        <span className="text-xs">Download</span>
+                        <span className="text-xs">Export</span>
                       </button>
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
                           handleOpenUsersDrawer();
                         }}
-                        className="flex-1 sm:flex-none inline-flex items-center justify-center px-1 py-2.5 rounded-xl bg-purple-500 hover:bg-purple-600 text-white text-xs sm:text-sm font-medium transition-all duration-200 hover:scale-105 active:scale-95 shadow-sm min-h-[44px]"
+                        className="flex-1 sm:flex-none inline-flex items-center justify-center px-2 py-1 rounded-xl bg-purple-500 hover:bg-purple-600 text-white text-xs sm:text-sm font-medium transition-all duration-200 hover:scale-105 active:scale-95 shadow-sm min-h-[44px]"
                         title="Manage Users"
                       >
                         <UsersIcon size={12} className="mr-1 flex-shrink-0" />
@@ -3233,7 +3210,7 @@ const ChatApplication: React.FC = () => {
             </div>
           </div>
 
-          <div className="flex space-x-3 mt-6">
+          <div className="flex flex-row justify-between items-center gap-2 mt-6">
           <button
             onClick={() => isEditMode ? updateDiscussion() : createDiscussion()}
             disabled={isCreatingDiscussion}
@@ -3264,7 +3241,7 @@ const ChatApplication: React.FC = () => {
               setIsEditMode(false);
               setEditingDiscussionId(null);
             }}
-            className="flex-1 bg-slate-100 text-slate-700 py-3 rounded-xl hover:bg-slate-200 transition font-medium"
+            className="px-4 py-2 rounded-lg text-white font-medium transition-colors bg-slate-500 hover:bg-slate-600"
           >
             {t('chats.newDiscussion.cancel')}
           </button>
@@ -3631,12 +3608,36 @@ const ChatApplication: React.FC = () => {
                   Cancel
                 </button>
                 <button
-                  onClick={() => handleSendTask(taskContent, taskFile, taskAudioBlob, taskRecordingTime, drawerType, taskStatus, selectedDiscussion, currentUser, selectedUser, setMessages, closeDrawer, baseUrl, selectedClients.map(c => c.id))}
-                  disabled={!taskContent.trim() && !taskFile && !taskAudioBlob}
+                  onClick={() => handleSendTask(
+                    taskContent, 
+                    taskFile, 
+                    taskAudioBlob, 
+                    taskRecordingTime, 
+                    drawerType, 
+                    taskStatus, 
+                    selectedDiscussion, 
+                    currentUser, 
+                    selectedUser, 
+                    setMessages, 
+                    closeDrawer, 
+                    baseUrl, 
+                    selectedClients.map(c => c.id),
+                    setIsSendingTask
+                  )}
+                  disabled={(!taskContent.trim() && !taskFile && !taskAudioBlob) || isSendingTask}
                   className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center space-x-2"
                 >
-                  <Send size={16} />
-                  <span>Send Task</span>
+                  {isSendingTask ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
+                      <span>Sending...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Send size={16} />
+                      <span>Send Task</span>
+                    </>
+                  )}
                 </button>
               </div>
             </div>

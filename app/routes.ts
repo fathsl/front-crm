@@ -25,5 +25,6 @@ export default [
     route("discussion-reports/:id", "routes/discussionReport/[id].tsx"),
     route("offers", "routes/offers.tsx"),
     route("categories", "routes/categories.tsx"),
+    route("chats/:discussionId", "routes/chats/[discussionId].tsx"),
   ]),
 ] satisfies RouteConfig;

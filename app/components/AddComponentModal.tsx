@@ -24,9 +24,10 @@ export const AddComponentModal = ({
   const [filteredComponents, setFilteredComponents] = useState(componentsByCategories);
   const [filteredComponentsSelected, setFilteredComponentsSelected] = useState(components);
   const [searchTermSelected, setSearchTermSelected] = useState('');
-  const [currentEditingComponent, setCurrentEditingComponent] = useState<Component | null>(null);
+  const [currentEditingComponent, setCurrentEditingComponent] = useState<Component |
+   null>(null);
 
-  const baseUrl = "https://api-crm-tegd.onrender.com";
+  const baseUrl = "http://localhost:5178";
 
   useEffect(() => {
     if (showAddDrawer) {

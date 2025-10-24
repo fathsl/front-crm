@@ -314,7 +314,7 @@ export interface Client {
   city: string;
   address: string;
   zipCode: string;
-  VATNumber: string;
+  vatNumber: string;
   modifiedAt: Date;
   createdBy: number;
   modifiedBy: number;
