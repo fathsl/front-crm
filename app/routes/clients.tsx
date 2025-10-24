@@ -107,7 +107,7 @@ export default function Clients() {
     fileUrl: '',
   });
 
-  const baseUrl = "http://localhost:5178";
+  const baseUrl = "https://api-crm-tegd.onrender.com";
 
   const fetchClients = async () => {
     try {

@@ -2099,7 +2099,7 @@ const ChatApplication: React.FC = () => {
       } else {
         alert(result.message || 'An error occurred');
       }
-    };
+  };
 
   const handleEditDiscussion = (discussion: Discussion) => {
       setIsEditMode(true);
@@ -2524,7 +2524,7 @@ const ChatApplication: React.FC = () => {
                         </button>
                       </div>
                     </div>
-          
+
                     <div className="flex-shrink-0 p-4 bg-gray-50 border-b">
                       <div className="relative">
                         <svg className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2566,12 +2566,21 @@ const ChatApplication: React.FC = () => {
                             ? 'bg-blue-50 hover:bg-blue-100 border-blue-200'
                             : 'hover:bg-gray-50 border-transparent hover:border-gray-200'
                         }`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                        }}
                       >
                         <div className="relative flex-shrink-0">
                           <input
                             type="checkbox"
                             checked={isSelected}
-                            onChange={() => handleUserToggle(user.userId)}
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              handleUserToggle(user.userId);
+                            }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                            }}
                             className={`w-5 h-5 bg-white border-2 rounded focus:ring-2 transition-colors ${
                               isAlreadyAssigned
                                 ? 'text-green-600 border-green-300 focus:ring-green-500'
