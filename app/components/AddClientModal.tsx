@@ -2,14 +2,9 @@ import { FileIcon, Save, UploadIcon, X } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { countries } from "~/data/countries";
-import type { Resource } from "~/help";
-import type { ExtendedClient } from "~/routes/clients";
+import type { Category, Resource } from "~/help";
+import type { FormDataType } from "~/routes/clients";
 
-type FormDataType = Omit<ExtendedClient, 'id'> & {
-    city?: string;
-    address?: string;
-    file?: File;
-};
 export const AddClientModal = ({
   modalMode,
   formData,
@@ -21,13 +16,14 @@ export const AddClientModal = ({
   pendingResources,
   setPendingResources,
   isLoadingResources,
+  categories
 }: {
     modalMode: 'add' | 'edit';
     formData: FormDataType;
     setFormData: (formData: FormDataType) => void;
     open: boolean;
     onClose: () => void;
-    onSubmit: (formData: FormDataType) => void;
+    onSubmit: (formData: FormDataType) => void | Promise<void>;
     existingResources?: Resource[];
     pendingResources?: Array<{
         id: string;
@@ -44,11 +40,21 @@ export const AddClientModal = ({
         audioFile?: Blob;
     }>>>;
     isLoadingResources ?: boolean;
+    categories?: Array<Category>;
     }) => {
-    const [showModal, setShowModal] = useState(false);
+
     const [resourceTitle, setResourceTitle] = useState('');
     const [resourceDescription, setResourceDescription] = useState('');
+    const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
     const fileInputRef = useRef<HTMLInputElement | null>(null);
+    const [customPlatforms, setCustomPlatforms] = useState([
+        'Facebook',
+        'Instagram',
+        'LinkedIn',
+        'Twitter'
+    ]);
+    const [isAddingNewPlatform, setIsAddingNewPlatform] = useState(false);
+    const [newPlatformName, setNewPlatformName] = useState('');
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -89,6 +95,29 @@ export const AddClientModal = ({
         }
 
         toast.success('Resource added to upload queue');
+    };
+
+    const handleAddNewPlatform = () => {
+        if (newPlatformName.trim() && !customPlatforms.includes(newPlatformName.trim())) {
+            const updatedPlatforms = [...customPlatforms, newPlatformName.trim()];
+            setCustomPlatforms(updatedPlatforms);
+            setFormData({...formData, platform: newPlatformName.trim()});
+            setNewPlatformName('');
+            setIsAddingNewPlatform(false);
+        }
+    };
+
+    const handleRemovePlatform = (platformToRemove: string) => {
+        const defaultPlatforms = ['Facebook', 'Instagram', 'LinkedIn', 'Twitter'];
+        if (defaultPlatforms.includes(platformToRemove)) {
+            return;
+        }
+        
+        setCustomPlatforms(customPlatforms.filter(p => p !== platformToRemove));
+        
+        if (formData.platform === platformToRemove) {
+            setFormData({...formData, platform: ''});
+        }
     };
 
     return (
@@ -197,7 +226,7 @@ export const AddClientModal = ({
             </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="w-full">
             <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                 Address
@@ -210,9 +239,12 @@ export const AddClientModal = ({
                 placeholder="Enter full address"
                 />
             </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                Zip Code
+                    Zip Code
                 </label>
                 <input
                 type="text"
@@ -222,9 +254,6 @@ export const AddClientModal = ({
                 placeholder="Enter zip code"
                 />
             </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                 VAT Number
@@ -237,6 +266,191 @@ export const AddClientModal = ({
                 placeholder="Enter VAT number"
                 />
             </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+                Progress
+            </label>
+            <select
+                value={formData.progress || ''}
+                onChange={(e) => setFormData({...formData, progress: e.target.value})}
+                className="w-full px-4 py-2 text-black border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow duration-200 hover:shadow-sm"
+            >
+                <option value="">Select progress status</option>
+                <option value="Contacted">📞 Contacted</option>
+                <option value="Awaiting Response">⏳ Awaiting Response</option>
+                <option value="In Negotiation">🤝 In Negotiation</option>
+                <option value="Accepted">✅ Accepted</option>
+                <option value="Refused">❌ Refused</option>
+                <option value="On Hold">⏸️ On Hold</option>
+            </select>
+            </div>
+            <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                Requested Date
+                </label>
+                <input
+                type="date"
+                value={formData.requestedDate || ''}
+                onChange={(e) => setFormData({...formData, requestedDate: e.target.value})}
+                className="w-full px-4 py-2 text-black border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow duration-200 hover:shadow-sm"
+                />
+            </div>
+            </div>
+
+            <div className="w-full">
+                <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Platform
+                </label>
+                
+                <div className="space-y-2">
+                    <div className="flex gap-2">
+                    <select
+                        value={formData.platform || ''}
+                        onChange={(e) => {
+                        if (e.target.value === 'add_new') {
+                            setIsAddingNewPlatform(true);
+                        } else {
+                            setFormData({...formData, platform: e.target.value});
+                        }
+                        }}
+                        className="flex-1 px-4 py-2 text-black border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow duration-200 hover:shadow-sm"
+                    >
+                        <option value="">Select a platform</option>
+                        {customPlatforms.map((platform, index) => (
+                        <option key={index} value={platform}>
+                            {platform}
+                        </option>
+                        ))}
+                        <option value="add_new">+ Add New Platform</option>
+                    </select>
+                    </div>
+
+                    {isAddingNewPlatform && (
+                    <div className="flex gap-2 mt-2bg-gray-50 rounded-lg border border-gray-200 w-full">
+                        <input
+                        type="text"
+                        value={newPlatformName}
+                        onChange={(e) => setNewPlatformName(e.target.value)}
+                        placeholder="Enter new platform name"
+                        className="flex-1 px-3 py-2 text-black border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        onKeyPress={(e) => {
+                            if (e.key === 'Enter') {
+                            handleAddNewPlatform();
+                            }
+                        }}
+                        />
+                        <button
+                        type="button"
+                        onClick={handleAddNewPlatform}
+                        className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors duration-200"
+                        >
+                        Add
+                        </button>
+                        <button
+                        type="button"
+                        onClick={() => {
+                            setIsAddingNewPlatform(false);
+                            setNewPlatformName('');
+                        }}
+                        className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors duration-200"
+                        >
+                        Cancel
+                        </button>
+                    </div>
+                    )}
+
+                    {customPlatforms.length > 4 && (
+                    <div className="flex flex-wrap gap-2 mt-2">
+                        {customPlatforms.slice(4).map((platform, index) => (
+                        <span
+                            key={index}
+                            className="inline-flex items-center gap-1 px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm"
+                        >
+                            {platform}
+                            <button
+                            type="button"
+                            onClick={() => handleRemovePlatform(platform)}
+                            className="hover:text-red-600"
+                            title="Remove platform"
+                            >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                            </button>
+                        </span>
+                        ))}
+                    </div>
+                    )}
+                </div>
+            </div>
+
+            </div>
+
+            <div className="space-y-2">
+                <label htmlFor="categories" className="block text-sm font-medium text-gray-700 mb-1">
+                    Categories *
+                </label>
+                
+                <div className="relative">
+                    <button
+                    type="button"
+                    onClick={() => setIsCategoryDropdownOpen(!isCategoryDropdownOpen)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-left focus:outline-none focus:ring-2 focus:ring-blue-500 flex items-center justify-between"
+                    >
+                    <span className="text-gray-700">
+                        {formData.categoryIds && formData.categoryIds.length > 0
+                        ? `${formData.categoryIds.length} category(ies) selected`
+                        : 'Select categories'}
+                    </span>
+                    <svg
+                        className={`w-5 h-5 text-gray-400 transition-transform ${isCategoryDropdownOpen ? 'rotate-180' : ''}`}
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                    >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                    </button>
+
+                    {isCategoryDropdownOpen && (
+                    <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
+                        {categories && categories.length > 0 ? (
+                        categories.map((category) => (
+                            <label
+                            key={category.kategoriID}
+                            className="flex items-center px-3 py-2 hover:bg-gray-50 cursor-pointer"
+                            >
+                            <input
+                                type="checkbox"
+                                checked={formData.categoryIds?.includes(category.kategoriID) || false}
+                                onChange={(e) => {
+                                const currentIds = formData.categoryIds || [];
+                                const newIds = e.target.checked
+                                    ? [...currentIds, category.kategoriID]
+                                    : currentIds.filter(id => id !== category.kategoriID);
+                                setFormData({ ...formData, categoryIds: newIds });
+                                }}
+                                className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                            />
+                            <span className="ml-2 text-sm text-gray-700">{category.kategoriAdi}</span>
+                            </label>
+                        ))
+                        ) : (
+                        <div className="px-3 py-2 text-sm text-gray-500">No categories available</div>
+                        )}
+                    </div>
+                    )}
+                </div>
+
+                {(!formData.categoryIds || formData.categoryIds.length === 0) && (
+                    <p className="mt-1 text-sm text-red-600">
+                    At least one category is required
+                    </p>
+                )}
             </div>
 
             <div>
@@ -418,11 +632,11 @@ export const AddClientModal = ({
                 placeholder="Additional information about the client..."
             />
             </div>
-            
+
             <div className="flex gap-3 pt-6 border-t border-gray-200">
             <button
                 type="button"
-                onClick={() => setShowModal(false)}
+                onClick={onClose}
                 className="flex-1 px-4 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium text-sm transition-colors duration-200 hover:shadow"
             >
                 Cancel

@@ -8,6 +8,7 @@ export const countries = [
   { code: 'BE', name: 'Belgium' },
   { code: 'BR', name: 'Brazil' },
   { code: 'BG', name: 'Bulgaria' },
+  { code: 'BA', name: 'Bosnia and Herzegovina' },
   { code: 'CA', name: 'Canada' },
   { code: 'CL', name: 'Chile' },
   { code: 'CN', name: 'China' },

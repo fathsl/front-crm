@@ -27,7 +27,7 @@ export const AddComponentModal = ({
   const [currentEditingComponent, setCurrentEditingComponent] = useState<Component |
    null>(null);
 
-  const baseUrl = "http://localhost:5178";
+  const baseUrl = "https://api-crm-tegd.onrender.com";
 
   useEffect(() => {
     if (showAddDrawer) {

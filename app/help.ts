@@ -320,6 +320,10 @@ export interface Client {
   modifiedBy: number;
   file?: File;
   projectIds?: number[];
+  platform?: string;
+  requestedDate?: string;
+  progress?: string;
+  categoryIds?: number[];
 }
 
 export enum DiscussionStatus {

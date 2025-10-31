@@ -12,7 +12,7 @@ import { TaskPriority } from '~/types/task';
 import { useNavigate } from "react-router";
 import { useMessageToast } from "~/components/ToastNotificationSystem";
 import { AddClientModal } from "~/components/AddClientModal";
-import type { ExtendedClient, FormDataType } from "./clients";
+import type { ExtendedClient } from "./clients";
 import { toast } from "sonner";
 
 interface MessageResponse {
@@ -88,6 +88,13 @@ export interface UpdateDiscussionStatusRequest {
   status: number;
   updatedByUserId: number;
 }
+
+export type FormDataType = Omit<ExtendedClient, 'id'> & {
+  city?: string;
+  address?: string;
+  file?: File;
+};
+
 
 const ChatApplication: React.FC = () => {
   const { t } = useTranslation();

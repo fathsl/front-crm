@@ -2,7 +2,7 @@ import { useAtomValue } from 'jotai';
 import { Edit2, Mail, Phone, Plus, Save, Search, Shield, Trash2, UserIcon, X, MapPin, Info, Home, FileText, MessageSquare, Calendar, EyeIcon, Check, UploadIcon, FileIcon } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { DiscussionStatus, Role, type Client, type CreateDiscussionRequest, type Discussion, type Project, type Resource } from '~/help';
+import { DiscussionStatus, Role, type Category, type Client, type CreateDiscussionRequest, type Discussion, type Project, type Resource } from '~/help';
 import { userAtom, type User } from '~/utils/userAtom';
 import { countries } from '~/data/countries';
 import { useNavigate } from 'react-router';
@@ -10,6 +10,8 @@ import type { DiscussionWithLastTask } from './chats';
 import { useMessageToast } from '~/components/ToastNotificationSystem';
 import { toast } from 'sonner';
 import { AddClientModal } from '~/components/AddClientModal';
+import ExcelImportButton from '~/components/ExcelClientImport';
+import TemplateDownloadMenu from '~/components/TemplateDownloadMenu';
 
 export interface ExtendedClient extends Client {
   id: number;
@@ -35,12 +37,14 @@ export type FormDataType = Omit<ExtendedClient, 'id'> & {
   city?: string;
   address?: string;
   file?: File;
+  categoryIds?: number[];
 };
 
 export default function Clients() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [clients, setClients] = useState<Client[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [projects,setProjects] = useState<Project[]>([]);
   const [filteredClients, setFilteredClients] = useState<Client[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -88,6 +92,7 @@ export default function Clients() {
     city?: string; 
     address?: string; 
     file?: File;
+    categoryIds?: number[];
   }>({
     first_name: '',
     last_name: '',
@@ -98,6 +103,9 @@ export default function Clients() {
     createdAt: new Date(),
     modifiedAt: new Date(),
     createdBy: 0,
+    requestedDate: '',
+    progress: '',
+    platform: '',
     modifiedBy: 0,
     imageUrl: '',
     zipCode: '',
@@ -105,6 +113,7 @@ export default function Clients() {
     address: '',
     city: '',
     fileUrl: '',
+    categoryIds: [],
   });
 
   const baseUrl = "https://api-crm-tegd.onrender.com";
@@ -116,6 +125,8 @@ export default function Clients() {
       if (response.ok) {
         const data = await response.json();
         setClients(data);
+        console.log("dattaa",clients);
+        
         
         const visible = filterByRole(data);
         setFilteredClients(visible);
@@ -158,6 +169,21 @@ export default function Clients() {
         console.error('Projects fetch error:', error);
       }
     };
+
+  const fetchCategories = async () => {
+    try {
+      const response = await fetch(`${baseUrl}/api/Categories`);
+      if (response.ok) {
+        const data = await response.json();
+        setCategories(data);
+      } else {
+        throw new Error('Failed to fetch categories');
+      }
+    } catch (err) {
+      setError('Kategoriler yüklenirken hata oluştu');
+      console.error('Error fetching categories:', err);
+    }
+  };
 
   const fetchResources = async (clientId: number) => {
     if (!clientId) {
@@ -227,6 +253,7 @@ export default function Clients() {
   useEffect(() => {
     fetchProjects();
     fetchUsers();
+    fetchCategories();
   }, []);
 
   useEffect(() => {
@@ -351,7 +378,7 @@ export default function Clients() {
   const createClient = async (clientData: Client) => {
     try {
       const formData = new FormData();
-    
+      
       formData.append('First_name', clientData.first_name);
       formData.append('Last_name', clientData.last_name);
       formData.append('Phone', clientData.phone || '');
@@ -362,19 +389,27 @@ export default function Clients() {
       formData.append('Address', clientData.address || '');
       formData.append('ZipCode', clientData.zipCode || '');
       formData.append('VATNumber', clientData.vatNumber || '');
+      formData.append('Platform', clientData.platform || '');
+      formData.append('Progress', clientData.progress || '');
+      formData.append('RequestedDate', clientData.requestedDate || '');
       formData.append('CreatedBy', clientData.createdBy?.toString() || '1');
-    
+      
+      if (clientData.categoryIds && clientData.categoryIds.length > 0) {
+        formData.append('categoriesIds', clientData.categoryIds.join(','));
+      }
+      
       if (clientData.file) {
         formData.append('file', clientData.file);
       }
 
+      console.log('Creating client with categories:', clientData.categoryIds);
       console.log('Creating client with pending resources:', pendingResources.length);
-
+      
       const response = await fetch(`${baseUrl}/api/Clients`, {
         method: 'POST',
         body: formData,
       });
-      
+
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         return { 
@@ -384,7 +419,7 @@ export default function Clients() {
       }
 
       const result = await response.json();
-      
+
       const clientId = result.id || result.clientId || result.Id || 
                       result.ClientId || result.client_id;
       
@@ -396,9 +431,10 @@ export default function Clients() {
           message: 'Client ID not returned from server' 
         };
       }
-
+      
       console.log('Client created with ID:', clientId);
-    
+      console.log('Categories associated:', result.categoriesCount || 0);
+      
       if (pendingResources.length > 0) {
         console.log(`Uploading ${pendingResources.length} resources for client ${clientId}`);
         toast.info(`Uploading ${pendingResources.length} resource(s)...`);
@@ -411,12 +447,11 @@ export default function Clients() {
           toast.warning('Client created, but some resources failed to upload');
         }
       }
-    
+      
       await fetchClients();
-      
       setPendingResources([]);
-      
       toast.success('Client created successfully');
+      
       return { success: true, data: result, clientId };
       
     } catch (err) {
@@ -444,10 +479,15 @@ export default function Clients() {
       formData.append('VATNumber', userData.vatNumber || '');
       formData.append('ModifiedBy', userData.modifiedBy?.toString() || '1');
       
+      if (userData.categoryIds && userData.categoryIds.length > 0) {
+        formData.append('categoriesIds', userData.categoryIds.join(','));
+      }
+      
       if (userData.file) {
         formData.append('file', userData.file);
       }
-
+      
+      console.log('Updating client with categories:', userData.categoryIds);
       console.log('Updating client with pending resources:', pendingResources.length);
       
       const response = await fetch(`${baseUrl}/api/Clients/${clientId}`, {
@@ -477,9 +517,7 @@ export default function Clients() {
       }
       
       await fetchClients();
-      
       await fetchResources(clientId);
-      
       setPendingResources([]);
       
       toast.success('Client updated successfully');
@@ -514,14 +552,19 @@ export default function Clients() {
     } catch (err) {
       alert('Kullanıcı silinirken hata oluştu');
     }
-  };
+  };  
 
   const handleSubmit = async (data: FormDataType) => {    
     if (!formData.first_name || !formData.last_name || !formData.email) {
       toast.error('Please fill in all required fields (First Name, Last Name, Email)');
       return;
     }
-  
+
+    if (!formData.categoryIds || formData.categoryIds.length === 0) {
+      toast.error('Please select at least one category');
+      return;
+    }
+
     const currentUserId = currentUser?.userId || 1; 
     const clientData: Client = {
       ...formData,
@@ -529,9 +572,10 @@ export default function Clients() {
       createdBy: modalMode === 'add' ? currentUserId : (formData.createdBy || currentUserId),
       modifiedBy: currentUserId,
       modifiedAt: new Date(),
-      createdAt: modalMode === 'add' ? new Date() : (formData.createdAt || new Date())
+      createdAt: modalMode === 'add' ? new Date() : (formData.createdAt || new Date()),
+      categoryIds: formData.categoryIds || []
     };
-  
+
     let result;
     if (modalMode === 'add') {
       result = await createClient(clientData);
@@ -568,6 +612,7 @@ export default function Clients() {
       modifiedAt: new Date(),
       createdBy: 0,
       modifiedBy: 0,
+      categoryIds: [],
       imageUrl: '',
       zipCode: '',
       vatNumber: '',
@@ -580,7 +625,25 @@ export default function Clients() {
     const clientData = client as ExtendedClient;
     setSelectedClient(clientData);
     setModalMode('edit');
-    
+
+    const formatDateForInput = (dateString: string | Date | null | undefined) => {
+      if (!dateString) return '';
+      
+      try {
+        const date = typeof dateString === 'string' ? new Date(dateString) : dateString;
+        
+        if (isNaN(date.getTime())) return '';
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        
+        return `${year}-${month}-${day}`;
+      } catch (error) {
+        console.error('Error formatting date:', error);
+        return '';
+      }
+    };
+
     setFormData({
       first_name: clientData.first_name,
       last_name: clientData.last_name,
@@ -594,6 +657,10 @@ export default function Clients() {
       modifiedBy: clientData.modifiedBy,
       imageUrl: clientData.imageUrl,
       zipCode: clientData.zipCode,
+      platform: clientData.platform,
+      requestedDate: formatDateForInput(clientData.requestedDate),
+      progress: clientData.progress,
+      categoryIds: clientData.categoryIds || [],
       vatNumber: clientData.vatNumber,
       address: clientData.address,
       city: clientData.city,
@@ -737,6 +804,18 @@ export default function Clients() {
     }
   };
 
+  const handleImportComplete = () => {
+    fetchClients();
+  };
+
+  const categoryMapping = {
+    'web design': 1,
+    'mobile app': 2,
+    'branding': 3,
+    'seo': 4,
+    'marketing': 5,
+  };
+
   useEffect(() => {
     fetchClients();
   }, []);
@@ -750,17 +829,25 @@ export default function Clients() {
               <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Clients</h1>
               <p className="mt-1 text-sm text-gray-500">Manage your clients and their information</p>
             </div>
-            <button
+            <div className='flex flex-row gap-4 items-center justify-center'>
+              <button
               onClick={openAddModal}
               className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center justify-center gap-2 transition-colors w-full sm:w-auto"
             >
               <Plus className="h-4 w-4" />
-              <span>Yeni Kullanıcı</span>
+              <span className='hidden md:block'>New</span>
             </button>
+            <ExcelImportButton
+              onImportComplete={handleImportComplete}
+              baseUrl={baseUrl}
+              userId={currentUser?.userId || 0}
+            />
+            <TemplateDownloadMenu />
+            </div>
           </div>
         </div>
       </div>
-   
+
       <div className="w-full px-4 py-4 sm:px-6 lg:px-8">
         <div className="mb-4 sm:mb-6">
           <div className="relative w-full">
@@ -1003,6 +1090,7 @@ export default function Clients() {
         pendingResources={pendingResources}
         setPendingResources={setPendingResources}
         isLoadingResources={isLoading.resources}
+        categories={categories}
       />
     )}
 

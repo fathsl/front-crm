@@ -13,7 +13,7 @@ const DiscussionDetailPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   const currentUser = useAtomValue(userAtom) as unknown as User;
-  const baseUrl = "http://localhost:5178";
+  const baseUrl = "https://api-crm-tegd.onrender.com";
 
   const fetchDiscussionById = useCallback(async () => {
     if (!discussionId || !currentUser) return;
