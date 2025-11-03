@@ -51,7 +51,7 @@ export const AddClientModal = ({
         'Facebook',
         'Instagram',
         'LinkedIn',
-        'Twitter'
+        'Website'
     ]);
     const [isAddingNewPlatform, setIsAddingNewPlatform] = useState(false);
     const [newPlatformName, setNewPlatformName] = useState('');

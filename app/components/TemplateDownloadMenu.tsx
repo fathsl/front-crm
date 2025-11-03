@@ -1,7 +1,7 @@
 import { toast } from 'sonner';
 import { Menu, Transition } from '@headlessui/react';
 import { Download, ChevronDown } from 'lucide-react';
-import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 import { Fragment } from 'react';
 import { FileIcon } from 'lucide-react';
 
@@ -9,7 +9,9 @@ interface TemplateDownloadMenuProps {
   className?: string;
 }
 
-export default function TemplateDownloadMenu({ className = '' }: TemplateDownloadMenuProps) {
+export default function TemplateDownloadMenu({ 
+  className = ''
+}: TemplateDownloadMenuProps) {
   const headers = [
     'PLATFORM',
     'DATE', 
@@ -23,23 +25,108 @@ export default function TemplateDownloadMenu({ className = '' }: TemplateDownloa
     'PROGRESS',
     'CRM STATUS'
   ];
+  
+  const baseUrl = "https://api-crm-tegd.onrender.com";
 
-  const downloadExcelTemplate = () => {
+  const downloadExcelTemplate = async () => {
     try {
-      const workbook = XLSX.utils.book_new();
-      const worksheet = XLSX.utils.aoa_to_sheet([headers]);
-      
-      const colWidths = [
-        { wch: 12 }, { wch: 12 }, { wch: 20 }, { wch: 15 }, 
-        { wch: 25 }, { wch: 20 }, { wch: 20 }, { wch: 15 }, 
-        { wch: 15 }, { wch: 12 }, { wch: 12 }
+      let categoryList = [];
+      try {
+        const response = await fetch(`${baseUrl}/api/Categories`);
+        if (response.ok) {
+          const data = await response.json();
+          categoryList = data.map((cat: any) => cat.kategoriAdi);
+        }
+      } catch (err) {
+        console.error('Error fetching categories:', err);
+        categoryList = ['Category 1', 'Category 2', 'Category 3'];
+      }
+
+      const platforms = ['Facebook', 'Instagram', 'LinkedIn', 'Website'];
+      const progressStatuses = [
+        'Contacted',
+        'Awaiting Response',
+        'In Negotiation',
+        'Accepted',
+        'Refused',
+        'On Hold'
       ];
-      worksheet['!cols'] = colWidths;
+
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet('Client Template');
+
+      worksheet.addRow(headers);
       
-      XLSX.utils.book_append_sheet(workbook, worksheet, 'Client Template');
-      XLSX.writeFile(workbook, 'client_import_template.xlsx');
-      
-      toast.success('Excel template downloaded successfully');
+      worksheet.getRow(1).font = { bold: true, size: 11 };
+      worksheet.getRow(1).fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FF4CAF50' }
+      };
+      worksheet.getRow(1).alignment = { vertical: 'middle', horizontal: 'center' };
+
+      worksheet.columns = [
+        { width: 12 }, { width: 12 }, { width: 20 }, { width: 15 },
+        { width: 25 }, { width: 20 }, { width: 20 }, { width: 15 },
+        { width: 15 }, { width: 12 }, { width: 12 }
+      ];
+
+      for (let row = 2; row <= 100; row++) {
+        worksheet.getCell(`A${row}`).dataValidation = {
+          type: 'list',
+          allowBlank: true,
+          formulae: [`"${platforms.join(',')}"`],
+          showErrorMessage: true,
+          errorStyle: 'error',
+          errorTitle: 'Invalid Platform',
+          error: 'Please select a platform from the dropdown list'
+        };
+
+        worksheet.getCell(`F${row}`).dataValidation = {
+          type: 'list',
+          allowBlank: true,
+          formulae: [`"${categoryList.join(',')}"`],
+          showErrorMessage: true,
+          errorStyle: 'error',
+          errorTitle: 'Invalid Request',
+          error: 'Please select a category from the dropdown list'
+        };
+
+        worksheet.getCell(`G${row}`).dataValidation = {
+          type: 'list',
+          allowBlank: true,
+          formulae: [`"${categoryList.join(',')}"`],
+          showErrorMessage: true,
+          errorStyle: 'error',
+          errorTitle: 'Invalid Request',
+          error: 'Please select a category from the dropdown list'
+        };
+
+        worksheet.getCell(`J${row}`).dataValidation = {
+          type: 'list',
+          allowBlank: true,
+          formulae: [`"${progressStatuses.join(',')}"`],
+          showErrorMessage: true,
+          errorStyle: 'error',
+          errorTitle: 'Invalid Progress',
+          error: 'Please select a progress status from the dropdown list'
+        };
+      }
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { 
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'client_import_template.xlsx';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      toast.success('Excel template with dropdowns downloaded successfully');
     } catch (error) {
       console.error('Error downloading Excel template:', error);
       toast.error('Failed to download Excel template');
