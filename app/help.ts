@@ -414,6 +414,21 @@ export interface Component {
   currency?: string;
 }
 
+export interface Offer {
+  teslimatID: number;
+  kullaniciID: number;
+  musteriID: number;
+  kategoriID: number;
+  miktar: number;
+  fiyat: number;
+  teslimatTarihi: string | Date;
+  teslimatBilgisi?: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy: number;
+  modifiedBy: number;
+}
+
 export const formatFileSize = (bytes: number): string => {
   if (bytes === 0) return '0 Bytes';
   const k = 1024;

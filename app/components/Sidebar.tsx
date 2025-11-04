@@ -1,5 +1,5 @@
 import { useAtomValue } from 'jotai';
-import { BarChart3, CheckSquare2Icon, LogOut, MessageCircle, MessageSquare, UsersIcon, UsersRoundIcon, X, ChevronsLeft, ChevronsRight, Server, Wifi, MapPinMinusInside, MapIcon, Instagram, ChartNoAxesColumnIncreasing, ChartSpline, Percent, CombineIcon, Layers2Icon } from 'lucide-react';
+import { BarChart3, CheckSquare2Icon, LogOut, MessageCircle, MessageSquare, UsersIcon, UsersRoundIcon, X, ChevronsLeft, ChevronsRight, Server, ChartSpline, Percent, Layers2Icon } from 'lucide-react';
 import { type FC } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useLocation } from 'react-router';
@@ -28,7 +28,7 @@ const Sidebar: FC<SidebarProps> = ({
 }) => {
   const { t } = useTranslation();
   const location = useLocation();
-  const currentUser = useAtomValue(userAtom)
+  const currentUser = useAtomValue(userAtom);
   const navItems: NavItem[] = [
     { id: 'projects', label: 'Projects', icon: CheckSquare2Icon , category: 'Office Managment', href: '/projects' },
     { id: 'reporting', label: 'Reporting', icon: BarChart3, category: 'Primary', href: '/reporting' },
@@ -41,7 +41,6 @@ const Sidebar: FC<SidebarProps> = ({
     { id: 'transaction-history', label: 'Transaction History', icon: History, category: 'Management', href: '/transactions' },
     { id: 'logistics', label: 'Logistics', icon: Box, category: 'Management', href: '/logistics' },
     { id: 'create-order', label: 'Create Order', icon: FilePlus, category: 'Operations', href: '/orders/new' },
-    
     { id: 'add-component', label: 'Add Component', icon: Package, category: 'Operations', href: '/components/new' },
     { id: 'logistics-history', label: 'Logistics History', icon: Truck, category: 'Operations', href: '/logistics/history' },
     { id: 'prescriptions', label: 'Prescriptions', icon: ClipboardList, category: 'Tools', href: '/prescriptions' }, */
@@ -49,16 +48,13 @@ const Sidebar: FC<SidebarProps> = ({
     ...(currentUser?.role === 'Yonetici'
       ? [{ id: 'progress', label: 'Progress', icon: ChartSpline, category: 'Tools', href: '/progress' }]
       : []),
-    ...(currentUser?.role === 'Yonetici'
-      ? [{ id: 'categories', label: 'Categories', icon: Layers2Icon, category: 'Operations', href: '/categories' }]
-      : []),
+    { id: 'categories', label: 'Categories', icon: Layers2Icon, category: 'Operations', href: '/categories' },
     { id: 'offers', label: 'Offers', icon: Percent, category: 'Operations', href: '/offers' },
     { id: 'meetings', label: 'Meetings', icon: MessageSquare, category: 'Communication', href: '/meetings' },
     { id: 'chats', label: 'Chats', icon: MessageCircle, category: 'Communication', href: '/chats' },
     /* { id: 'media', label: 'Social Media', icon:Instagram, category: 'Communication', href: '/media' }, */
     /* { id: 'bulk-mail', label: 'Bulk Mail', icon: Mail, category: 'Communication', href: '/mail' }, */
   ];
-
   const groupedNavItems = navItems.reduce((acc, item) => {
     if (!acc[item.category]) acc[item.category] = [];
     acc[item.category].push(item);
@@ -71,7 +67,6 @@ const Sidebar: FC<SidebarProps> = ({
 
   return (
     <>     
-      {/* Sidebar */}
       <aside className={`fixed inset-y-0 left-0 z-40 ${collapsed ? 'w-20' : 'w-64'} bg-white shadow-xl transform transition-transform duration-300 ease-in-out ${
         sidebarOpen ? 'translate-x-0' : '-translate-x-full'
       }`}>
@@ -91,70 +86,46 @@ const Sidebar: FC<SidebarProps> = ({
               
               <div className="absolute inset-0 bg-white/10 backdrop-blur-sm"></div>
               
-              <div className="relative">
+               <div className="relative bg-gradient-to-br from-indigo-600 to-purple-700 rounded-2xl shadow-xl overflow-hidden">
                 {collapsed ? (
-                  <div className="p-4 flex flex-col items-center justify-center gap-3">
+                  <div className="p-4 flex flex-col items-center gap-4">
                     <button
                       onClick={onToggleCollapse}
-                      title="Expand sidebar"
-                      className="group p-3 rounded-xl bg-white/20 hover:bg-white/30 backdrop-blur-sm transition-all duration-300 hover:scale-110 shadow-lg"
+                      className="p-2.5 rounded-lg bg-white/10 hover:bg-white/20 transition-all duration-200 group"
+                      aria-label="Expand sidebar"
                     >
-                      <ChevronsRight className="w-6 h-6 text-white group-hover:translate-x-0.5 transition-transform duration-300" />
+                      <ChevronsRight className="w-5 h-5 text-white group-hover:translate-x-0.5 transition-transform duration-200" />
                     </button>
                     
-                    <div className="flex flex-col items-center gap-2">
-                      <div className="relative">
-                        <div className="w-3 h-3 bg-emerald-200 rounded-full animate-pulse shadow-lg shadow-emerald-400/50" />
-                        <div className="absolute inset-0 w-3 h-3 bg-emerald-200 rounded-full animate-ping" />
-                      </div>
-                      <Server className="w-5 h-5 text-white/80" />
+                    <div className="relative">
+                      <Server className="w-6 h-6 text-white" />
+                      <div className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-400 rounded-full border-2 border-indigo-600" />
                     </div>
                   </div>
                 ) : (
-                  <div className="p-6">
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 bg-white/20 rounded-lg backdrop-blur-sm">
-                          <Server className="w-6 h-6 text-white" />
-                        </div>
-                        <div>
-                          <p className="text-sm text-white/80 font-medium">Connected to</p>
-                          <p className="text-lg font-bold text-white tracking-wide">CRM Server</p>
-                        </div>
-                      </div>
-                      
-                      <button
-                        onClick={onToggleCollapse}
-                        title="Collapse sidebar"
-                        className="group p-2.5 rounded-xl bg-white/20 hover:bg-white/30 backdrop-blur-sm transition-all duration-300 hover:scale-110 shadow-lg"
-                      >
-                        <ChevronsLeft className="w-5 h-5 text-white group-hover:-translate-x-0.5 transition-transform duration-300" />
-                      </button>
-                    </div>
-                    
+                  <div className="p-5">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        <div className="relative flex items-center gap-2">
-                          <div className="w-4 h-4 bg-emerald-200 rounded-full animate-pulse shadow-lg shadow-emerald-400/50" />
-                          <div className="absolute left-0 w-4 h-4 bg-emerald-200 rounded-full animate-ping" />
-                          <span className="text-sm text-white/90 font-medium ml-4">Live Connection</span>
+                        <div className="relative">
+                          <div className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center">
+                            <Server className="w-5 h-5 text-white" />
+                          </div>
+                          <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-400 rounded-full border-2 border-indigo-600" />
+                        </div>
+
+                        <div>
+                          <h3 className="text-base font-semibold text-white">CRM Server</h3>
+                          <span className="text-xs text-white/60">Connected</span>
                         </div>
                       </div>
-                      
-                      <div className="flex items-center gap-2 px-3 py-1.5 bg-white/20 rounded-full backdrop-blur-sm">
-                        <Wifi className="w-4 h-4 text-white" />
-                        <span className="text-xs text-white/90 font-medium">Secure</span>
-                      </div>
-                    </div>
-                    
-                    <div className="mt-4 pt-4 border-t border-white/20">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs text-white/70">Signal Strength</span>
-                        <span className="text-xs text-white font-semibold">Excellent</span>
-                      </div>
-                      <div className="w-full bg-white/20 rounded-full h-2 overflow-hidden">
-                        <div className="h-full bg-gradient-to-r from-emerald-300 to-emerald-100 rounded-full w-5/6 shadow-lg shadow-emerald-400/30 animate-pulse"></div>
-                      </div>
+
+                      <button
+                        onClick={onToggleCollapse}
+                        className="p-2 rounded-lg bg-white/10 hover:bg-white/20 transition-all duration-200 group"
+                        aria-label="Collapse sidebar"
+                      >
+                        <ChevronsLeft className="w-4 h-4 text-white group-hover:-translate-x-0.5 transition-transform duration-200" />
+                      </button>
                     </div>
                   </div>
                 )}

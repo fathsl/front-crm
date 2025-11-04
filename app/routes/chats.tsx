@@ -1,5 +1,5 @@
 import { useAtomValue } from "jotai";
-import { AlertCircle, ArrowLeft, Check, CheckCircle, ClipboardList, Clock, DownloadIcon, Edit3, EyeIcon, FileIcon, FileText, Hourglass, ListChecksIcon, MessageSquare, Mic, MoreVertical, Paperclip, Pause, Play, Plus, PlusIcon, Search, Send, Share, Square, Trash2, Users, UsersIcon, Volume2, X } from "lucide-react";
+import { AlertCircle, ArrowLeft, Check, CheckCircle, ClipboardList, Clock, DownloadIcon, Edit3, EyeIcon, FileIcon, FileText, Flag, Forward, Hourglass, ListChecksIcon, MessageSquare, Mic, MoreVertical, Paperclip, Pause, Play, Plus, PlusIcon, Search, Send, Share, Square, Trash2, Users, UsersIcon, Volume2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"; 
 import { useTranslation } from 'react-i18next';
 import { formatFileSize, type SendMessageRequest, type User } from "~/help";
@@ -164,12 +164,16 @@ const ChatApplication: React.FC = () => {
   const audioStreamRef = useRef<MediaStream | null>(null);
   const taskAudioStreamRef = useRef<MediaStream | null>(null);
   const taskRecordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const [isOpen, setIsOpen] = useState(false);
   const [taskMediaRecorder, setTaskMediaRecorder] = useState<MediaRecorder | null>(null);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedMessages, setSelectedMessages] = useState(new Set());
   const [isSendingTask, setIsSendingTask] = useState(false);
   const isRecordingCanceled = useRef(false);
   const navigate = useNavigate();
   const baseUrl = "https://api-crm-tegd.onrender.com";
   const isAdmin = currentUser?.role === "Yonetici";
+  const menuRef = useRef<HTMLDivElement>(null);
 
   const [formData, setFormData] = useState<Omit<ExtendedClient, 'id'> & { 
     city?: string; 
@@ -363,6 +367,22 @@ const ChatApplication: React.FC = () => {
     setFilteredClients(searched);
   }, [clients, clientSearchTerm, currentUser?.userId, isAdmin]);
 
+  useEffect(() => {
+    const handleClickOutside = (event: any) => {
+      if (menuRef.current && !menuRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isOpen]);
+
   const fetchAssignedUsers = useCallback(async (discussionId: number) => {
     if (loadingAssignedUsers[discussionId]) return;
    
@@ -508,7 +528,7 @@ const ChatApplication: React.FC = () => {
   const createDiscussion = async () => {
   if (!selectedUser || isCreatingDiscussion) return;
   setIsCreatingDiscussion(true);
-  
+
   const clientId = (selectedClients[0]?.id) ?? (selectedClientId || 0);
   const selectedClient = selectedClients[0] ?? (clientId ? clients.find(c => c.id === clientId) : undefined);
   const computedTitle = newDiscussionTitle.trim() || (selectedClient ? `${selectedClient.first_name} ${selectedClient.last_name}` : '');
@@ -518,7 +538,7 @@ const ChatApplication: React.FC = () => {
     alert('Please enter a title or select a client to auto-fill the title.');
     return;
   }
-  
+
   const request: CreateDiscussionRequest = {
     title: computedTitle,
     description: newDiscussionDescription,
@@ -2116,6 +2136,86 @@ const ChatApplication: React.FC = () => {
       setShowCreateDiscussion(true);
   };
 
+  const handleReport = () => {
+    console.log('Report clicked');
+    setIsOpen(false);
+  };
+
+  const handleForward = () => {
+    console.log('Forward Message clicked');
+    setIsOpen(false);
+  };
+
+  const handleDelete = () => {
+    console.log('Delete Chat clicked');
+    setIsOpen(false);
+  };
+
+  const toggleSelectionMode = () => {
+    setSelectionMode(!selectionMode);
+    setSelectedMessages(new Set());
+    setIsOpen(false);
+  };
+
+  const toggleMessageSelection = (messageId: number) => {
+    const newSelected = new Set(selectedMessages);
+    if (newSelected.has(messageId)) {
+      newSelected.delete(messageId);
+    } else {
+      newSelected.add(messageId);
+    }
+    setSelectedMessages(newSelected);
+  };
+
+  const handleMessageClick = (messageId: number, e?: React.MouseEvent) => {
+    if (e?.target && (e.target as HTMLElement).closest('button')) return;
+    
+    if (!selectionMode) {
+      setSelectionMode(true);
+      setSelectedMessages(new Set([messageId]));
+    } else {
+      toggleMessageSelection(messageId);
+    }
+  };
+
+  const deleteSelectedMessages = async () => {
+    if (selectedMessages.size === 0) return;
+    
+    const confirmDelete = window.confirm(
+      `Are you sure you want to delete ${selectedMessages.size} message(s)?`
+    );
+    
+    if (!confirmDelete) return;
+
+    try {
+      const deletePromises = Array.from(selectedMessages).map(messageId =>
+        fetch(`${baseUrl}/api/Chat/messages/${messageId}?userId=${currentUser?.userId || 0}`, {
+          method: 'DELETE'
+        })
+      );
+
+      const results = await Promise.all(deletePromises);
+      
+      const allSuccessful = results.every(response => response.ok);
+      
+      if (allSuccessful) {
+        setMessages(prev => prev.filter(msg => !selectedMessages.has(msg.id)));
+        
+        toggleSelectionMode();
+        
+        console.log(`Successfully deleted ${selectedMessages.size} message(s)`);
+      } else {
+        console.error('Some messages failed to delete');
+        const failedIds = results
+          .map((response, index) => (!response.ok ? Array.from(selectedMessages)[index] : null))
+          .filter(id => id !== null);
+        console.error('Failed to delete messages:', failedIds);
+      }
+    } catch (error) {
+      console.error('Error deleting selected messages:', error);
+    }
+  };
+
   useEffect(() => {
     if (messagesContainerRef.current) {
       const el = messagesContainerRef.current;
@@ -2703,174 +2803,298 @@ const ChatApplication: React.FC = () => {
                 </div>
               </div>
             </div>
-            <div className="flex space-x-2">
-              <button className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition">
+            <div className="flex space-x-2" ref={menuRef}>
+              <button 
+                onClick={() => setIsOpen(!isOpen)}
+                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition"
+                aria-label="More options"
+              >
                 <MoreVertical className="w-5 h-5" />
               </button>
             </div>
           </div>
         </div>
 
+        {selectionMode && (
+          <div className="bg-gradient-to-r from-blue-500 to-indigo-600 text-white px-4 py-3 flex items-center justify-between shadow-lg">
+            <div className="flex items-center gap-4">
+              <button
+                onClick={toggleSelectionMode}
+                className="p-1.5 hover:bg-white/20 rounded-full transition-all duration-200"
+                aria-label="Exit selection mode"
+              >
+                <X className="w-5 h-5" />
+              </button>
+              <div className="flex items-center gap-3">
+                <span className="font-semibold text-lg">{selectedMessages.size}</span>
+                <span className="text-white/90">selected</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={() => {
+                  const allIds = messages.map(m => m.id);
+                  setSelectedMessages(new Set(allIds));
+                }}
+                className="px-3 py-1.5 text-sm bg-white/20 hover:bg-white/30 rounded-lg transition-all duration-200"
+              >
+                Select All
+              </button>
+              <button 
+                onClick={() => {
+                  console.log('Forward messages:', Array.from(selectedMessages));
+                  toggleSelectionMode();
+                }}
+                className="p-2 bg-white/20 hover:bg-white/30 rounded-lg transition-all duration-200"
+                aria-label="Forward messages"
+                disabled={selectedMessages.size === 0}
+              >
+                <Forward className="w-5 h-5" />
+              </button>
+              <button 
+                onClick={deleteSelectedMessages}
+                className="p-2 bg-red-500 hover:bg-red-600 rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                aria-label="Delete messages"
+                disabled={selectedMessages.size === 0}
+              >
+                <Trash2 className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {isOpen && (
+          <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
+            <button
+              onClick={handleReport}
+              className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3 transition"
+            >
+              <Flag className="w-4 h-4 text-gray-500" />
+              <span>Report</span>
+            </button>
+
+            <button
+              onClick={handleForward}
+              className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3 transition"
+            >
+              <Forward className="w-4 h-4 text-gray-500" />
+              <span>Forward Message</span>
+            </button>
+
+            <div className="border-t border-gray-100 my-1"></div>
+
+            <button
+              onClick={handleDelete}
+              className="w-full px-4 py-2.5 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-3 transition"
+            >
+              <Trash2 className="w-4 h-4" />
+              <span>Delete Chat</span>
+            </button>
+          </div>
+        )}
+
         <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-4 space-y-6">
           {messages.map((message) => (
             <div
-                key={message.id}
-                className={`flex ${
-                  message.senderId === currentUser?.userId
-                    ? "justify-end"
-                    : "justify-start"
-                }`}
-              >
-              <div className={`max-w-xs sm:max-w-sm lg:max-w-md`}>
-                {message.messageType === 4 ? (
-                  <TaskMessage
-                  task={{
-                    id: message.id,
-                    title: message.taskTitle || 'Untitled Task',
-                    description: message.taskDescription || message.content,
-                    status: message.taskStatus as TaskStatus || TaskStatus.Backlog,
-                    priority: typeof message.taskPriority === 'number' 
-                    ? getPriorityFromNumber(message.taskPriority)
-                    : (message.taskPriority as TaskPriority) || TaskPriority.Medium,
-                    dueDate: message.dueDate ? (typeof message.dueDate === 'string' ? message.dueDate : message.dueDate.toISOString()) : undefined,
-                    assignedTo: message.senderName,
-                    duration: message.duration,
-                    taskStatus: (message.taskStatus as TaskStatus) || TaskStatus.Backlog,
-                    taskPriority: message.taskPriority || TaskPriority.Medium,
-                    fileName: message.fileName,
-                    fileSize: message.fileSize,
-                    idriveUrl: message.idriveUrl,
-                    taskId: message.taskId
-                  }}
-                  onStatusChange={async (newStatus) => {
-                    if (!currentUser) return;
-                    try {
-                      const response = await fetch(`${baseUrl}/api/Task/${message.taskId}/status`, {
-                        method: 'PUT',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                          status: newStatus,
-                          updatedByUserId: currentUser.userId
-                        })
-                      });
-
-                      if (response.ok) {
-                        const updatedTask = await response.json();
-                        const currentTimestamp = new Date().toISOString();
-                        
-                        if (selectedDiscussion && currentUser) {
-                          try {
-                            const timestampResponse = await fetch(`${baseUrl}/api/Chat/discussions/${selectedDiscussion.id}/update-timestamp`, {
-                              method: 'PUT',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({
-                                updatedByUserId: currentUser.userId,
-                                updatedAt: updatedTask.updatedAt || currentTimestamp
-                              })
-                            });
-                            
-                            if (!timestampResponse.ok) {
-                              console.error('Failed to update discussion timestamp:', await timestampResponse.text());
-                            }
-                          } catch (error) {
-                            console.error('Error updating discussion timestamp:', error);
-                          }
-                        }
-
-                        setMessages(prev => prev.map(msg =>
-                          msg.id === message.id ? {
-                            ...msg,
-                            taskStatus: updatedTask.status,
-                            updatedAt: updatedTask.updatedAt
-                          } : msg
-                        ));
-
-                        if (currentUser?.userId) {
-                          await fetchDiscussions(currentUser.userId, selectedUser?.userId);
-                        }
-
-                        if (selectedDiscussion?.id) {
-                          setSelectedDiscussion(prev =>
-                            prev ? { ...prev, updatedAt: new Date(updatedTask.updatedAt || currentTimestamp) } : prev
-                          );
-                        }
-                      } else {
-                        console.error('Failed to update task status:', await response.text());
-                      }
-                    } catch (error) {
-                      console.error('Error updating task status:', error);
-                    }
-                  }}
-                  onPlayVoice={message.duration ? () => playTaskVoiceMessage(message.taskId || 0, message.id, message) : undefined}
-                  onDownloadFile={message.fileName ? () => downloadTaskFile(message.taskId || 0, message.id, message.fileName!) : undefined}
-                  isPlaying={playingVoiceId === message.id}
-                />
-                ) : message.messageType === 3 ? (
-                  <div className={`bg-blue-500 text-white rounded-2xl p-4`}>
-                    <VoiceMessage message={message} />
-                  </div>
-                ): message.messageType === 2 ? (
-                  <div>
-                    <FileMessage message={message} />
-                  </div>
-                ) : (
-                  <div className={`rounded-2xl rounded-br-md p-4 shadow-sm ${message.senderId === currentUser?.userId ? 'bg-blue-500 text-white' : 'bg-white/90 border border-slate-200 text-slate-800'}`}>
-                    <p className="text-sm leading-relaxed">{message.content}</p>
+              key={message.id}
+              className={`flex ${
+                message.senderId === currentUser?.userId
+                  ? "justify-end"
+                  : "justify-start"
+              }`}
+            >
+              <div className="flex items-start gap-2 max-w-xs sm:max-w-sm lg:max-w-md">
+                {selectionMode && (
+                  <div className="pt-2">
+                    <input
+                      type="checkbox"
+                      checked={selectedMessages.has(message.id)}
+                      onChange={() => toggleMessageSelection(message.id)}
+                      className="w-5 h-5 rounded border-gray-300 text-blue-500 focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                    />
                   </div>
                 )}
-                <div className={`text-xs text-gray-400 mt-1`}>
-                  {(() => {
-                    const raw = (message as any).createdAt ?? (message as any).timestamp;
-                    try { return raw ? new Date(raw).toLocaleString() : ''; } catch { return ''; }
-                  })()}
-                </div>
-                <div className="mt-1 text-xs">
-                  {(() => {
-                    const isSeen = (message as any).isSeen === true;
-                    const seenAt = (message as any).seenAt;
-                    const checks = (
-                      <div className="mt-1 text-xs flex items-center space-x-1">
-                      <span className={isSeen ? 'text-blue-500' : 'text-gray-400'}>
-                        <Check size={12} className="inline mr-0.5 align-text-bottom" />
-                        <Check size={12} className="inline align-text-bottom" />
-                      </span>
+
+                <div 
+                  className="flex-1 cursor-pointer"
+                  onClick={() => handleMessageClick(message.id)}
+                >
+                  {message.messageType === 4 ? (
+                    <TaskMessage
+                      task={{
+                        id: message.id,
+                        title: message.taskTitle || 'Untitled Task',
+                        description: message.taskDescription || message.content,
+                        status: message.taskStatus as TaskStatus || TaskStatus.Backlog,
+                        priority: typeof message.taskPriority === 'number' 
+                        ? getPriorityFromNumber(message.taskPriority)
+                        : (message.taskPriority as TaskPriority) || TaskPriority.Medium,
+                        dueDate: message.dueDate ? (typeof message.dueDate === 'string' ? message.dueDate : message.dueDate.toISOString()) : undefined,
+                        assignedTo: message.senderName,
+                        duration: message.duration,
+                        taskStatus: (message.taskStatus as TaskStatus) || TaskStatus.Backlog,
+                        taskPriority: message.taskPriority || TaskPriority.Medium,
+                        fileName: message.fileName,
+                        fileSize: message.fileSize,
+                        idriveUrl: message.idriveUrl,
+                        taskId: message.taskId
+                      }}
+                      onStatusChange={async (newStatus) => {
+                        if (!currentUser) return;
+                        try {
+                          const response = await fetch(`${baseUrl}/api/Task/${message.taskId}/status`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              status: newStatus,
+                              updatedByUserId: currentUser.userId
+                            })
+                          });
+
+                          if (response.ok) {
+                            const updatedTask = await response.json();
+                            const currentTimestamp = new Date().toISOString();
+                            
+                            if (selectedDiscussion && currentUser) {
+                              try {
+                                const timestampResponse = await fetch(`${baseUrl}/api/Chat/discussions/${selectedDiscussion.id}/update-timestamp`, {
+                                  method: 'PUT',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({
+                                    updatedByUserId: currentUser.userId,
+                                    updatedAt: updatedTask.updatedAt || currentTimestamp
+                                  })
+                                });
+                                
+                                if (!timestampResponse.ok) {
+                                  console.error('Failed to update discussion timestamp:', await timestampResponse.text());
+                                }
+                              } catch (error) {
+                                console.error('Error updating discussion timestamp:', error);
+                              }
+                            }
+
+                            setMessages(prev => prev.map(msg =>
+                              msg.id === message.id ? {
+                                ...msg,
+                                taskStatus: updatedTask.status,
+                                updatedAt: updatedTask.updatedAt
+                              } : msg
+                            ));
+
+                            if (currentUser?.userId) {
+                              await fetchDiscussions(currentUser.userId, selectedUser?.userId);
+                            }
+
+                            if (selectedDiscussion?.id) {
+                              setSelectedDiscussion(prev =>
+                                prev ? { ...prev, updatedAt: new Date(updatedTask.updatedAt || currentTimestamp) } : prev
+                              );
+                            }
+                          } else {
+                            console.error('Failed to update task status:', await response.text());
+                          }
+                        } catch (error) {
+                          console.error('Error updating task status:', error);
+                        }
+                      }}
+                      onPlayVoice={message.duration ? () => playTaskVoiceMessage(message.taskId || 0, message.id, message) : undefined}
+                      onDownloadFile={message.fileName ? () => downloadTaskFile(message.taskId || 0, message.id, message.fileName!) : undefined}
+                      isPlaying={playingVoiceId === message.id}
+                    />
+                  ) : message.messageType === 3 ? (
+                    <div className="bg-blue-500 text-white rounded-2xl p-4">
+                      <VoiceMessage message={message} />
                     </div>
-                    );
-                    if (isSeen && seenAt) {
+                  ) : message.messageType === 2 ? (
+                    <div>
+                      <FileMessage message={message} />
+                    </div>
+                  ) : (
+                    <div
+                      className={`rounded-2xl rounded-br-md p-4 shadow-sm ${
+                        message.senderId === currentUser?.userId
+                          ? 'bg-blue-500 text-white'
+                          : 'bg-white/90 border border-slate-200 text-slate-800'
+                      }`}
+                    >
+                      <p className="text-sm leading-relaxed">{message.content}</p>
+                    </div>
+                  )}
+
+                  <div className="text-xs text-gray-400 mt-1">
+                    {(() => {
+                      const raw = message.createdAt ?? message.timestamp;
                       try {
-                        const when = new Date(seenAt).toLocaleString();
-                        return (
-                          <div className="flex items-center space-x-1">
-                            {checks}
-                            <span className="text-blue-500">Seen {when}</span>
-                          </div>
-                        );
+                        return raw ? new Date(raw).toLocaleString() : '';
                       } catch {
-                        return <div className="flex items-center">{checks}<span className="ml-1 text-blue-500">Seen</span></div>;
+                        return '';
                       }
-                    }
-                    return <div className="flex items-center">{checks}<span className="ml-1 text-gray-500">Unseen</span></div>;
-                  })()}
-                </div>
-                {message.senderId === currentUser?.userId && currentUser.role === "Yonetici" && (
+                    })()}
+                  </div>
+
+                  <div className="mt-1 text-xs">
+                    {(() => {
+                      const isSeen = message.isSeen === true;
+                      const seenAt = message.seenAt;
+                      const checks = (
+                        <div className="mt-1 text-xs flex items-center space-x-1">
+                          <span className={isSeen ? 'text-blue-500' : 'text-gray-400'}>
+                            <Check size={12} className="inline mr-0.5 align-text-bottom" />
+                            <Check size={12} className="inline align-text-bottom" />
+                          </span>
+                        </div>
+                      );
+                      if (isSeen && seenAt) {
+                        try {
+                          const when = new Date(seenAt).toLocaleString();
+                          return (
+                            <div className="flex items-center space-x-1">
+                              {checks}
+                              <span className="text-blue-500">Seen {when}</span>
+                            </div>
+                          );
+                        } catch {
+                          return (
+                            <div className="flex items-center">
+                              {checks}
+                              <span className="ml-1 text-blue-500">Seen</span>
+                            </div>
+                          );
+                        }
+                      }
+                      return (
+                        <div className="flex items-center">
+                          {checks}
+                          <span className="ml-1 text-gray-500">Unseen</span>
+                        </div>
+                      );
+                    })()}
+                  </div>
+
+                  {message.senderId === currentUser?.userId && currentUser.role === "Yonetici" && (
                     <div className="flex space-x-2 mt-2 text-xs opacity-75">
                       <button
-                        onClick={() => {
-                          setEditingMessageId(message.id);
-                          setEditingContent(message.content || '');
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          console.log('Edit message', message.id);
                         }}
                         className="hover:text-blue-200"
                       >
                         <Edit3 size={12} />
                       </button>
                       <button
-                        onClick={() => deleteMessage(message.id)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          console.log('Delete message', message.id);
+                        }}
                         className="hover:text-red-300"
                       >
                         <Trash2 size={12} />
                       </button>
                     </div>
                   )}
+                </div>
               </div>
             </div>
           ))}

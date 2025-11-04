@@ -24,6 +24,7 @@ export default [
     route("progress/:id", "routes/progress/[id].tsx"),
     route("discussion-reports/:id", "routes/discussionReport/[id].tsx"),
     route("offers", "routes/offers.tsx"),
+    route("offers/new", "routes/offers/new.tsx"),
     route("categories", "routes/categories.tsx"),
     route("chats/:discussionId", "routes/chats/[discussionId].tsx"),
   ]),

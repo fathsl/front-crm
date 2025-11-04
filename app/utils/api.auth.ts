@@ -32,8 +32,6 @@ export class AuthAPI {
   static async logout(): Promise<ApiResponse<void>> {
     return ApiClient.post<void>('/Auth/logout');
   }
-
-  // Add other auth-related methods here
 }
 
 export function handleAuthError(error: unknown): string {

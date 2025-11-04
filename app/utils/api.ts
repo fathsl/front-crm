@@ -21,13 +21,13 @@ class ApiClient {
         'Content-Type': 'application/json',
         ...options.headers,
       },
-      credentials: 'include', // Important for cookies, authorization headers, etc.
+      credentials: 'include',
       ...options,
     };
 
     try {
       const response = await fetch(url, config);
-      const data = await response.json().catch(() => ({})); // Handle empty responses
+      const data = await response.json().catch(() => ({}));
       
       if (!response.ok) {
         return {

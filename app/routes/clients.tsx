@@ -1,10 +1,9 @@
 import { useAtomValue } from 'jotai';
-import { Edit2, Mail, Phone, Plus, Save, Search, Shield, Trash2, UserIcon, X, MapPin, Info, Home, FileText, MessageSquare, Calendar, EyeIcon, Check, UploadIcon, FileIcon } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Edit2, Mail, Phone, Plus, Search, Trash2, UserIcon, X, MapPin, Home, FileText, MessageSquare, Calendar, EyeIcon, Check } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { DiscussionStatus, Role, type Category, type Client, type CreateDiscussionRequest, type Discussion, type Project, type Resource } from '~/help';
+import { DiscussionStatus, type Category, type Client, type CreateDiscussionRequest, type Discussion, type Project, type Resource } from '~/help';
 import { userAtom, type User } from '~/utils/userAtom';
-import { countries } from '~/data/countries';
 import { useNavigate } from 'react-router';
 import type { DiscussionWithLastTask } from './chats';
 import { useMessageToast } from '~/components/ToastNotificationSystem';
