@@ -391,6 +391,7 @@ export interface Category {
   createdAt?: Date;
   updatedBy?: number;
   updatedAt?: Date;
+  imageUrl?: string;
 }
 
 export enum BirimUnity {

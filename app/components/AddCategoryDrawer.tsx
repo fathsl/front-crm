@@ -1,4 +1,4 @@
-import { X } from "lucide-react";
+import { Edit2, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { Category } from "~/help";
 
@@ -23,6 +23,8 @@ export const AddCategoryDrawer = ({
     fiyat: '',
     currency: 'TRY',
   });
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -39,6 +41,7 @@ export const AddCategoryDrawer = ({
           fiyat: category.fiyat?.toString() || '',
           currency: category.currency || 'TRY',
         });
+        setImagePreview(category.imageUrl || '');
       } else {
         setFormData({
           kategoriAdi: '',
@@ -46,7 +49,9 @@ export const AddCategoryDrawer = ({
           fiyat: '',
           currency: 'TRY',
         });
+        setImagePreview('');
       }
+      setImageFile(null);
       setError('');
     }
   }, [isOpen, category]);
@@ -57,6 +62,22 @@ export const AddCategoryDrawer = ({
       ...prev,
       [name]: value,
     }));
+  };
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        setError('Image must be less than 5MB');
+        return;
+      }
+      setImageFile(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImagePreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   const validateForm = () => {
@@ -78,27 +99,30 @@ export const AddCategoryDrawer = ({
     setError('');
 
     try {
-      const payload = {
-        kategoriAdi: formData.kategoriAdi.trim(),
-        stok: formData.stok ? parseInt(formData.stok) : null,
-        fiyat: parseFloat(formData.fiyat),
-        currency: formData.currency,
-        createdBy: currentUserId,
-        updatedBy: isEditMode ? currentUserId : undefined,
-      };
+      const formDataToSend = new FormData();
+      formDataToSend.append('kategoriAdi', formData.kategoriAdi.trim());
+      formDataToSend.append('stok', formData.stok || '');
+      formDataToSend.append('fiyat', formData.fiyat);
+      formDataToSend.append('currency', formData.currency);
+      
+      if (isEditMode) {
+        formDataToSend.append('updatedBy', currentUserId.toString());
+      } else {
+        formDataToSend.append('createdBy', currentUserId.toString());
+      }
+
+      if (imageFile) {
+        formDataToSend.append('image', imageFile);
+      }
 
       const url = isEditMode
         ? `${baseUrl}/api/Categories/${category.kategoriID}`
         : `${baseUrl}/api/Categories`;
-
       const method = isEditMode ? 'PUT' : 'POST';
 
       const response = await fetch(url, {
         method,
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
+        body: formDataToSend,
       });
 
       if (!response.ok) {
@@ -206,6 +230,72 @@ export const AddCategoryDrawer = ({
                         ))}
                     </select>
                 </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Category Image
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="file"
+                      id="image-upload"
+                      accept="image/*"
+                      onChange={handleImageChange}
+                      className="hidden"
+                    />
+                    <label
+                      htmlFor="image-upload"
+                      className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-blue-500 transition-colors"
+                    >
+                      {imagePreview ? (
+                        <div className="">
+                          <img
+                            src={imagePreview}
+                            alt="Preview"
+                            className="w-full h-32 object-cover rounded-lg border-2 border-gray-300"
+                          />
+                          <div className="flex gap-2 mt-2">
+                            <label
+                              htmlFor="image-upload"
+                              className="flex-1 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 cursor-pointer text-center"
+                            >
+                              <Edit2 className="h-4 w-4 mr-2" />
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setImageFile(null);
+                                setImagePreview('');
+                              }}
+                              className="flex-1 px-4 py-2 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700"
+                            >
+                              <Trash2 className="h-4 w-4 mr-2" />
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-center">
+                          <svg
+                            className="mx-auto h-12 w-12 text-gray-400"
+                            stroke="currentColor"
+                            fill="none"
+                            viewBox="0 0 48 48"
+                          >
+                            <path
+                              d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          </svg>
+                          <p className="mt-2 text-sm text-gray-600">
+                            Click to upload image
+                          </p>
+                        </div>
+                      )}
+                    </label>
+                  </div>
                 </div>
 
               {error && (

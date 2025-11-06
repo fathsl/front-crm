@@ -3,7 +3,6 @@ import { Calendar, Edit2, Eye, PlusIcon, SearchIcon, Trash2 } from "lucide-react
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AddCategoryDrawer } from "~/components/AddCategoryDrawer";
-import { AddCategoryModal } from "~/components/AddCategoryModal";
 import { AddComponentModal } from "~/components/AddComponentModal";
 import type { Category, Component, User } from "~/help";
 import { userAtom } from "~/utils/userAtom";

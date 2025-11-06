@@ -1,4 +1,4 @@
-import { Building2, Calendar, DollarSign, FileText, Package, Plus, Search, Tag, UserIcon } from 'lucide-react';
+import { FileText, Package, Plus, Search, UserIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router';
@@ -125,104 +125,52 @@ export default function Offers() {
             {filteredOffers.map((offer) => (
               <div
                 key={offer.teslimatID}
-                className="bg-white rounded-2xl shadow-md hover:shadow-xl transition-all duration-300 overflow-hidden border border-gray-100 hover:border-blue-200"
+                className="bg-white rounded-lg shadow hover:shadow-md transition-shadow border border-gray-200"
               >
-                <div className="p-6">
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6 pb-6 border-b border-gray-100">
-                    <div className="flex items-center gap-4">
-                      <div className="p-3 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl shadow-md">
-                        <FileText className="w-6 h-6 text-white" />
-                      </div>
-                      <div>
-                        <p className="text-sm text-gray-500 font-medium">Offer No</p>
-                        <p className="text-2xl font-bold text-gray-900">#{offer.teslimatID}</p>
-                      </div>
+                <div className="p-4">
+                  <div className="flex items-center justify-between gap-3 pb-3 border-b mb-3">
+                    <div className="flex items-center gap-2">
+                      <FileText className="w-4 h-4 text-blue-600" />
+                      <span className="font-bold text-gray-900">#{offer.teslimatID}</span>
                     </div>
-                    <div className="flex items-center gap-3 bg-gradient-to-r from-blue-50 to-indigo-50 px-6 py-3 rounded-xl border border-blue-100">
-                      <DollarSign className="w-6 h-6 text-blue-600" />
-                      <div>
-                        <p className="text-xs text-blue-600 font-semibold uppercase">Total Price</p>
-                        <p className="text-2xl font-bold text-blue-700">{formatCurrency(offer.fiyat)}</p>
-                      </div>
-                    </div>
+                    <span className="text-lg font-bold text-blue-600">{formatCurrency(offer.fiyat)}</span>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-                    <div className="flex items-center gap-3 p-4 rounded-xl bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100">
-                      <div className="flex-shrink-0 w-12 h-12 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-md">
-                        <Building2 className="w-6 h-6 text-white" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs text-blue-600 font-semibold uppercase tracking-wide">Customer</p>
-                        <p className="text-gray-900 font-bold text-base truncate">
-                          {offer.musteriID || 'Belirtilmemiş'}
-                        </p>
-                      </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-3 text-sm">
+                    <div>
+                      <p className="text-xs text-gray-500 mb-0.5">Customer</p>
+                      <p className="font-medium text-gray-900 truncate">{offer.musteriID || 'N/A'}</p>
                     </div>
 
-                    <div className="flex items-center gap-3 p-4 rounded-xl bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-100">
-                      <div className="flex-shrink-0 w-12 h-12 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl flex items-center justify-center shadow-md">
-                        <UserIcon className="w-6 h-6 text-white" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs text-emerald-600 font-semibold uppercase tracking-wide">User</p>
-                        <p className="text-gray-900 font-bold text-base truncate">
-                          {offer.kullaniciID || 'Belirtilmemiş'}
-                        </p>
-                      </div>
+                    <div>
+                      <p className="text-xs text-gray-500 mb-0.5">User</p>
+                      <p className="font-medium text-gray-900 truncate">{offer.kullaniciID || 'N/A'}</p>
                     </div>
 
-                    <div className="flex items-center gap-3 p-4 rounded-xl bg-gradient-to-r from-purple-50 to-pink-50 border border-purple-100">
-                      <div className="flex-shrink-0 w-12 h-12 bg-gradient-to-br from-purple-500 to-pink-600 rounded-xl flex items-center justify-center shadow-md">
-                        <Tag className="w-6 h-6 text-white" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs text-purple-600 font-semibold uppercase tracking-wide">Category</p>
-                        <p className="text-gray-900 font-bold text-base truncate">
-                          {offer.kategoriID || 'Belirtilmemiş'}
-                        </p>
-                      </div>
+                    <div>
+                      <p className="text-xs text-gray-500 mb-0.5">Category</p>
+                      <p className="font-medium text-gray-900 truncate">{offer.kategoriID || 'N/A'}</p>
                     </div>
 
-                    <div className="flex items-center gap-3 p-4 rounded-xl bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-100">
-                      <div className="flex-shrink-0 w-12 h-12 bg-gradient-to-br from-amber-500 to-orange-600 rounded-xl flex items-center justify-center shadow-md">
-                        <Package className="w-6 h-6 text-white" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs text-amber-600 font-semibold uppercase tracking-wide">Quantity</p>
-                        <p className="text-gray-900 font-bold text-base">
-                          {offer.miktar}
-                        </p>
-                      </div>
+                    <div>
+                      <p className="text-xs text-gray-500 mb-0.5">Quantity</p>
+                      <p className="font-medium text-gray-900">{offer.miktar}</p>
                     </div>
 
-                    <div className="flex items-center gap-3 p-4 rounded-xl bg-gradient-to-r from-rose-50 to-red-50 border border-rose-100">
-                      <div className="flex-shrink-0 w-12 h-12 bg-gradient-to-br from-rose-500 to-red-600 rounded-xl flex items-center justify-center shadow-md">
-                        <Calendar className="w-6 h-6 text-white" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs text-rose-600 font-semibold uppercase tracking-wide">Delivery Date</p>
-                        <p className="text-gray-900 font-bold text-base">
-                          {formatDate(offer.teslimatTarihi)}
-                        </p>
-                      </div>
+                    <div>
+                      <p className="text-xs text-gray-500 mb-0.5">Delivery Date</p>
+                      <p className="font-medium text-gray-900">{formatDate(offer.teslimatTarihi)}</p>
                     </div>
                   </div>
 
                   {offer.teslimatBilgisi && (
-                    <div className="mb-4 p-4 rounded-xl bg-gray-50 border border-gray-200">
-                      <p className="text-xs text-gray-500 font-semibold uppercase tracking-wide mb-2 flex items-center gap-2">
-                        <FileText className="w-4 h-4" />
-                        Delivery Information
-                      </p>
-                      <p className="text-gray-700 text-sm leading-relaxed">
-                        {offer.teslimatBilgisi}
-                      </p>
+                    <div className="mb-3 p-2 bg-gray-50 rounded text-xs text-gray-700">
+                      {offer.teslimatBilgisi}
                     </div>
                   )}
 
                   <div className="flex justify-end">
-                    <button className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold py-3 px-8 rounded-xl transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105 active:scale-95">
+                    <button className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium py-1.5 px-4 rounded transition-colors">
                       View Details
                     </button>
                   </div>
