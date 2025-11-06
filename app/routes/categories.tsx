@@ -1,5 +1,5 @@
 import { useAtomValue } from "jotai";
-import { Calendar, Edit2, Eye, PlusIcon, SearchIcon, Trash2 } from "lucide-react";
+import { Calendar, Edit2, Eye, Package, PlusIcon, SearchIcon, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AddCategoryDrawer } from "~/components/AddCategoryDrawer";
@@ -243,92 +243,107 @@ const CategoriesPage = () => {
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:gap-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-4 sm:gap-6">
             {filteredCategories.map((category) => (
               <div
-                key={category.kategoriID}
-                className="bg-white rounded-lg shadow-sm hover:shadow-lg transition-all duration-200 border border-gray-200 overflow-hidden flex flex-col"
-              >
-                <div className="bg-gradient-to-r from-blue-50 to-blue-100 px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-200">
-                  <div className="flex justify-between items-start gap-2">
-                    <div className="flex-1 min-w-0">
-                      <h3 className="text-base sm:text-lg font-semibold text-gray-900 truncate">
-                        {category.kategoriAdi || 'N/A'}
-                      </h3>
-                    </div>
-                    <div className="flex gap-1 flex-shrink-0">
-                      <button
-                        onClick={() => handleEditCategory(category)}
-                        className="p-2 text-blue-600 hover:bg-blue-100 rounded-lg transition-colors"
-                        title="Düzenle"
-                      >
-                        <Edit2 className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteCategory(category.kategoriID)}
-                        className="p-2 text-red-600 hover:bg-red-100 rounded-lg transition-colors"
-                        title="Sil"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
+              key={category.kategoriID}
+              className="bg-white rounded-lg shadow-sm hover:shadow-lg transition-all duration-200 border border-gray-200 overflow-hidden flex flex-col"
+            >
+              <div className="relative w-full h-48 bg-gray-100 overflow-hidden">
+                {category.imageUrl ? (
+                  <img
+                    src={category.imageUrl}
+                    alt={category.kategoriAdi}
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      e.currentTarget.style.display = 'none';
+                      e.currentTarget.style.display = 'flex';
+                    }}
+                  />
+                ) : (
+                  <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-gray-100 to-gray-200">
+                    <Package className="h-16 w-16 text-gray-400 mb-2" />
+                    <span className="text-sm text-gray-500 font-medium">No Image</span>
                   </div>
-                </div>
-
-                <div className="px-4 sm:px-6 py-3 sm:py-4 flex-1 space-y-3">
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs sm:text-sm text-gray-600 font-medium">Fiyat</span>
-                    <span className="text-sm sm:text-base font-semibold text-blue-600">
-                      {formatCurrency(category.fiyat || 0)}
-                    </span>
-                  </div>
-
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs sm:text-sm text-gray-600 font-medium">Stok</span>
-                    <span className={`px-2 py-1 text-xs sm:text-sm font-semibold rounded-full ${
-                      category.stok === null || category.stok === undefined ? 'bg-gray-100 text-gray-700' :
-                      category.stok > 10 ? 'bg-green-100 text-green-700' :
-                      category.stok > 0 ? 'bg-yellow-100 text-yellow-700' :
-                      'bg-red-100 text-red-700'
-                    }`}>
-                      {category.stok !== null && category.stok !== undefined ? category.stok : 'N/A'}
-                    </span>
-                  </div>
-
-                  <div className="pt-2 border-t border-gray-200">
-                    <p className="text-xs text-gray-500">
-                      Created by: {getUserNameById(category.createdBy)}
-                    </p>
-                    <p className="text-xs text-gray-400 mt-1">
-                      {formatDate(category.createdAt || new Date())}
-                    </p>
-                  </div>
-
-                  {category.updatedAt !== category.createdAt && (
-                    <div className="text-xs text-gray-500">
-                      {category.updatedBy
-                        ? `Updated by: ${getUserNameById(category.updatedBy)}`
-                        : ''
-                      }
-                      {category.updatedAt && (
-                        <p className="text-xs text-gray-400 mt-1">
-                          {formatDate(category.updatedAt)}
-                        </p>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                <div className="px-4 sm:px-6 py-3 bg-gray-50 border-t border-gray-200">
+                )}
+                
+                <div className="absolute top-2 right-2 flex gap-1">
                   <button
-                    onClick={() => openComponentModal(category)}
-                    className="w-full bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs sm:text-sm font-medium py-2 rounded-lg transition-colors flex items-center justify-center gap-2"
+                    onClick={() => handleEditCategory(category)}
+                    className="p-2 bg-white/90 backdrop-blur-sm text-blue-600 hover:bg-blue-50 rounded-lg transition-colors shadow-sm"
+                    title="Düzenle"
                   >
-                    <Eye className="h-4 w-4" />
-                    <span>Add Components</span>
+                    <Edit2 className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={() => handleDeleteCategory(category.kategoriID)}
+                    className="p-2 bg-white/90 backdrop-blur-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors shadow-sm"
+                    title="Sil"
+                  >
+                    <Trash2 className="h-4 w-4" />
                   </button>
                 </div>
               </div>
+
+              <div className="bg-gradient-to-r from-blue-50 to-blue-100 px-4 sm:px-6 py-3 border-b border-gray-200">
+                <h3 className="text-base sm:text-lg font-semibold text-gray-900 truncate">
+                  {category.kategoriAdi || 'N/A'}
+                </h3>
+              </div>
+
+              <div className="px-4 sm:px-6 py-3 sm:py-4 flex-1 space-y-3">
+                <div className="flex justify-between items-center">
+                  <span className="text-xs sm:text-sm text-gray-600 font-medium">Fiyat</span>
+                  <span className="text-sm sm:text-base font-semibold text-blue-600">
+                    {formatCurrency(category.fiyat || 0)}
+                  </span>
+                </div>
+                
+                <div className="flex justify-between items-center">
+                  <span className="text-xs sm:text-sm text-gray-600 font-medium">Stok</span>
+                  <span className={`px-2 py-1 text-xs sm:text-sm font-semibold rounded-full ${
+                    category.stok === null || category.stok === undefined ? 'bg-gray-100 text-gray-700' :
+                    category.stok > 10 ? 'bg-green-100 text-green-700' :
+                    category.stok > 0 ? 'bg-yellow-100 text-yellow-700' :
+                    'bg-red-100 text-red-700'
+                  }`}>
+                    {category.stok !== null && category.stok !== undefined ? category.stok : 'N/A'}
+                  </span>
+                </div>
+
+                <div className="pt-2 border-t border-gray-200">
+                  <p className="text-xs text-gray-500">
+                    Created by: {getUserNameById(category.createdBy)}
+                  </p>
+                  <p className="text-xs text-gray-400 mt-1">
+                    {formatDate(category.createdAt || new Date())}
+                  </p>
+                </div>
+
+                {category.updatedAt !== category.createdAt && (
+                  <div className="text-xs text-gray-500">
+                    {category.updatedBy && (
+                      <p>Updated by: {getUserNameById(category.updatedBy)}</p>
+                    )}
+                    {category.updatedAt && (
+                      <p className="text-xs text-gray-400 mt-1">
+                        {formatDate(category.updatedAt)}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div className="px-4 sm:px-6 py-3 bg-gray-50 border-t border-gray-200">
+                <button
+                  onClick={() => openComponentModal(category)}
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-medium py-2 rounded-lg transition-colors flex items-center justify-center gap-2"
+                >
+                  <Eye className="h-4 w-4" />
+                  <span>Add Components</span>
+                </button>
+              </div>
+            </div>
             ))}
           </div>
           </div>
