@@ -416,18 +416,84 @@ export interface Component {
 }
 
 export interface Offer {
-  teslimatID: number;
-  kullaniciID: number;
-  musteriID: number;
-  kategoriID: number;
-  miktar: number;
-  fiyat: number;
-  teslimatTarihi: string | Date;
-  teslimatBilgisi?: string | null;
-  createdAt: Date;
-  updatedAt: Date;
-  createdBy: number;
-  modifiedBy: number;
+  // Basic Information
+  siparisAlID: number;
+  siparisNo?: string | null;
+  teklifNo?: string | null;
+  musteriId?: number | null;
+  musteriAd?: string | null;
+  mTelefon?: string | null;
+  mMail?: string | null;
+  mUlke?: string | null;
+  mVATNumarasi?: string | null;
+  mZipKod?: string | null;
+  mAdres?: string | null;
+  siparisNotu?: string | null;
+  
+  // User Information
+  kullaniciID?: number | null;
+  kullaniciAdi?: string | null;
+  updatedBy?: number | null;
+  updatedAt?: string | null;
+  
+  // Seller Information (S prefix)
+  sTelefon?: string | null;
+  sFax?: string | null;
+  sWeb?: string | null;
+  sE_Mail?: string | null;
+  sVatNumarasi?: string | null;
+  sUlke?: string | null;
+  sAdres?: string | null;
+  
+  // Delivery Information
+  montaj?: string | null;
+  teslimat?: string | null;
+  montajFiyat?: number | null;
+  teslimatFiyat?: number | null;
+  teslimatÇeşiti?: string | null;
+  
+  // Financial Information
+  pesinYüzde: number;
+  paraTipi?: string | null;
+  indirim: number;
+  kdv: number;
+  toplamFiyat: number;
+  brutToplamFiyat: number;
+  odenenMiktar: number;
+  kaparoFiyat: number;
+  kalanBakiye: number;
+  odemeDurum: string;
+  
+  // Quantity Information
+  mAdet: number;
+  mTeslimat: number;
+  
+  // Delivery Address (T prefix)
+  tTeslimAlanAdi?: string | null;
+  tIlgiliKisi?: string | null;
+  tTelefon?: string | null;
+  tAltTelefon?: string | null;
+  tE_Mail?: string | null;
+  tVATNumarasi?: string | null;
+  tZipKod?: string | null;
+  tUlke?: string | null;
+  tAdres?: string | null;
+  
+  // Status and Control
+  tarih: string;
+  kontrol: string;
+  muhasebe: boolean;
+  fabrika: boolean;
+  satinAlma: boolean;
+  uretim: boolean;
+  lojistik: boolean;
+  red?: string | null;
+  siparisMiTeklifMi?: string | null;
+  sirket: string;
+  sTarih?: Date | null;
+  kontrolNot?: string | null;
+  fabrikaNot?: string | null;
+  lojistikNot?: string | null;
 }
 
 export const formatFileSize = (bytes: number): string => {

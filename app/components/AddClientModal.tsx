@@ -50,6 +50,7 @@ export const AddClientModal = ({
     const [customPlatforms, setCustomPlatforms] = useState([
         'Facebook',
         'Instagram',
+        'Whatsapp',
         'LinkedIn',
         'Website'
     ]);
@@ -108,7 +109,7 @@ export const AddClientModal = ({
     };
 
     const handleRemovePlatform = (platformToRemove: string) => {
-        const defaultPlatforms = ['Facebook', 'Instagram', 'LinkedIn', 'Twitter'];
+        const defaultPlatforms = ['Facebook', 'Instagram', 'Whatsapp', 'LinkedIn', 'Twitter'];
         if (defaultPlatforms.includes(platformToRemove)) {
             return;
         }

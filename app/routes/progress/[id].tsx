@@ -1,4 +1,3 @@
-import { ArrowLeft, Calendar, MessageSquare, TrendingUp, UsersIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import type { Client, Discussion, Meeting, User } from "~/help";
@@ -60,7 +59,7 @@ export default function UserProgressDashboard() {
           let userClients: Client[] = [];
           if (clientsResponse.ok) {
             const clientsData = await clientsResponse.json();
-            userClients = clientsData.filter((c: Client) => c.id === parseInt(id || '0'));
+            userClients = clientsData.filter((c: Client) => c.createdBy === parseInt(id || '0'));
             setStats(prev => ({ ...prev, clients: userClients.length }));
           }
 
@@ -178,41 +177,6 @@ export default function UserProgressDashboard() {
         </div>
       );
     }
-
-    const statCards = [
-      {
-        title: 'Clients',
-        value: stats.clients,
-        icon: UsersIcon,
-        color: 'blue',
-        bgColor: 'bg-blue-50',
-        iconColor: 'text-blue-600'
-      },
-      {
-        title: 'Discussions',
-        value: stats.discussions,
-        icon: MessageSquare,
-        color: 'green',
-        bgColor: 'bg-green-50',
-        iconColor: 'text-green-600'
-      },
-      {
-        title: 'Meetings',
-        value: stats.meetings,
-        icon: Calendar,
-        color: 'purple',
-        bgColor: 'bg-purple-50',
-        iconColor: 'text-purple-600'
-      },
-      {
-        title: 'Unread Messages',
-        value: stats.unreadMessages,
-        icon: TrendingUp,
-        color: 'orange',
-        bgColor: 'bg-orange-50',
-        iconColor: 'text-orange-600'
-      }
-    ];
   
     return (
         <div className="min-h-screen bg-gray-50">

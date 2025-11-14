@@ -1,4 +1,4 @@
-import { FileText, Package, Plus, Search, UserIcon } from 'lucide-react';
+import { CheckCircle, FileText, MapPin, Package, Plus, Search, UserIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router';
@@ -8,6 +8,8 @@ export default function Offers() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [offers, setOffers] = useState<Offer[]>([]);
+  const [selectedOffer, setSelectedOffer] = useState<Offer | null>(null);
+  const [showDetailModal, setShowDetailModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -36,31 +38,50 @@ export default function Offers() {
   };
 
   const filteredOffers = offers.filter(offer =>
-    offer.musteriID?.toString().includes(searchTerm) ||
-    offer.kullaniciID?.toString().includes(searchTerm) ||
-    offer.kategoriID?.toString().includes(searchTerm) ||
-    offer.teslimatID?.toString().includes(searchTerm)
+    offer.siparisNo?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    offer.teklifNo?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    offer.musteriAd?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    offer.mUlke?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    offer.kullaniciAdi?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    offer.siparisAlID?.toString().includes(searchTerm) ||
+    offer.odemeDurum?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const formatDate = (date: string | Date) => {
-    return new Date(date).toLocaleDateString('tr-TR', {
+  const formatDate = (dateString: string) => {
+    if (!dateString) return 'Tarih yok';
+    
+    const [day, month, year] = dateString.split('/');
+    
+    const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+    
+    return date.toLocaleDateString('en-GB', {
+      day: '2-digit',
+      month: 'short',
       year: 'numeric',
-      month: 'long',
-      day: 'numeric'
     });
   };
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('tr-TR', {
-      style: 'currency',
-      currency: 'TRY'
-    }).format(amount);
+  const getStatusColor = (status: string) => {
+    switch (status.toLowerCase()) {
+      case 'ödendi': return 'bg-green-100 text-green-800';
+      case 'beklemede': return 'bg-yellow-100 text-yellow-800';
+      case 'iptal': return 'bg-red-100 text-red-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
   };
 
+  const formatCurrency = (amount: number, currency?: string | null) => {
+    return `${amount.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency || ''}`;
+  };
 
   useEffect(() => {
     fetchOffers();
   }, []);
+
+  const openDetailModal = (offer: Offer) => {
+    setSelectedOffer(offer);
+    setShowDetailModal(true);
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 w-full">
@@ -123,60 +144,192 @@ export default function Offers() {
         ) : (
           <div className="space-y-4">
             {filteredOffers.map((offer) => (
-              <div
-                key={offer.teslimatID}
-                className="bg-white rounded-lg shadow hover:shadow-md transition-shadow border border-gray-200"
-              >
-                <div className="p-4">
-                  <div className="flex items-center justify-between gap-3 pb-3 border-b mb-3">
-                    <div className="flex items-center gap-2">
-                      <FileText className="w-4 h-4 text-blue-600" />
-                      <span className="font-bold text-gray-900">#{offer.teslimatID}</span>
+            <div
+              key={offer.siparisAlID}
+              className="bg-white rounded-lg shadow hover:shadow-lg transition-shadow border border-gray-200"
+            >
+              <div className="p-6">
+                <div className="flex items-start justify-between pb-3 border-b mb-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-2">
+                      <FileText className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                      <div className="min-w-0">
+                        <span className="font-bold text-base sm:text-lg text-gray-900 block truncate">
+                          {offer.siparisNo || `#${offer.siparisAlID}`}
+                        </span>
+                        {offer.teklifNo && (
+                          <span className="text-xs text-gray-500">Teklif: {offer.teklifNo}</span>
+                        )}
+                      </div>
                     </div>
-                    <span className="text-lg font-bold text-blue-600">{formatCurrency(offer.fiyat)}</span>
-                  </div>
-
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-3 text-sm">
-                    <div>
-                      <p className="text-xs text-gray-500 mb-0.5">Customer</p>
-                      <p className="font-medium text-gray-900 truncate">{offer.musteriID || 'N/A'}</p>
-                    </div>
-
-                    <div>
-                      <p className="text-xs text-gray-500 mb-0.5">User</p>
-                      <p className="font-medium text-gray-900 truncate">{offer.kullaniciID || 'N/A'}</p>
-                    </div>
-
-                    <div>
-                      <p className="text-xs text-gray-500 mb-0.5">Category</p>
-                      <p className="font-medium text-gray-900 truncate">{offer.kategoriID || 'N/A'}</p>
-                    </div>
-
-                    <div>
-                      <p className="text-xs text-gray-500 mb-0.5">Quantity</p>
-                      <p className="font-medium text-gray-900">{offer.miktar}</p>
-                    </div>
-
-                    <div>
-                      <p className="text-xs text-gray-500 mb-0.5">Delivery Date</p>
-                      <p className="font-medium text-gray-900">{formatDate(offer.teslimatTarihi)}</p>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(offer.odemeDurum)}`}>
+                        {offer.odemeDurum}
+                      </span>
+                      {offer.siparisMiTeklifMi && (
+                        <span className="px-2 py-0.5 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
+                          {offer.siparisMiTeklifMi}
+                        </span>
+                      )}
+                      <span className="px-2 py-0.5 bg-purple-100 text-purple-800 rounded-full text-xs font-medium">
+                        {offer.sirket}
+                      </span>
                     </div>
                   </div>
-
-                  {offer.teslimatBilgisi && (
-                    <div className="mb-3 p-2 bg-gray-50 rounded text-xs text-gray-700">
-                      {offer.teslimatBilgisi}
+                  <div className="text-right ml-3 flex-shrink-0">
+                    <div className="text-lg sm:text-xl font-bold text-blue-600">
+                      {formatCurrency(offer.toplamFiyat, offer.paraTipi)}
                     </div>
-                  )}
-
-                  <div className="flex justify-end">
-                    <button className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium py-1.5 px-4 rounded transition-colors">
-                      View Details
-                    </button>
+                    <div className="text-xs text-gray-500 mt-0.5">
+                      {formatDate(offer.tarih)}
+                    </div>
                   </div>
                 </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 mb-3">
+                  <div className="bg-gray-50 p-2 rounded">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <UserIcon className="w-3 h-3 text-gray-600" />
+                      <span className="text-xs font-semibold text-gray-600">CUSTOMER</span>
+                    </div>
+                    <p className="text-sm font-medium text-gray-900 truncate">{offer.musteriAd || 'N/A'}</p>
+                    {offer.mTelefon && <p className="text-xs text-gray-600 truncate">{offer.mTelefon}</p>}
+                    {offer.mMail && <p className="text-xs text-gray-600 truncate">{offer.mMail}</p>}
+                    {offer.mVATNumarasi && <p className="text-xs text-gray-500 truncate">VAT: {offer.mVATNumarasi}</p>}
+                  </div>
+
+                  <div className="bg-gray-50 p-2 rounded">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <MapPin className="w-3 h-3 text-gray-600" />
+                      <span className="text-xs font-semibold text-gray-600">LOCATION</span>
+                    </div>
+                    <p className="text-sm font-medium text-gray-900 truncate">{offer.mUlke || 'N/A'}</p>
+                    {offer.mZipKod && <p className="text-xs text-gray-600 truncate">ZIP: {offer.mZipKod}</p>}
+                    {offer.mAdres && <p className="text-xs text-gray-600 line-clamp-2">{offer.mAdres}</p>}
+                  </div>
+
+                  <div className="bg-gray-50 p-2 rounded">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <UserIcon className="w-3 h-3 text-gray-600" />
+                      <span className="text-xs font-semibold text-gray-600">ASSIGNED TO</span>
+                    </div>
+                    <p className="text-sm font-medium text-gray-900 truncate">{offer.kullaniciAdi || 'N/A'}</p>
+                    {offer.updatedAt && (
+                      <p className="text-xs text-gray-500">Updated: {formatDate(offer.updatedAt)}</p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 mb-3">
+                  <div className="text-center p-2 bg-blue-50 rounded">
+                    <p className="text-xs text-gray-600 mb-0.5">Total</p>
+                    <p className="text-sm font-bold text-blue-600 truncate">{formatCurrency(offer.toplamFiyat, offer.paraTipi)}</p>
+                  </div>
+                  <div className="text-center p-2 bg-green-50 rounded">
+                    <p className="text-xs text-gray-600 mb-0.5">Paid</p>
+                    <p className="text-sm font-bold text-green-600 truncate">{formatCurrency(offer.odenenMiktar, offer.paraTipi)}</p>
+                  </div>
+                  <div className="text-center p-2 bg-yellow-50 rounded">
+                    <p className="text-xs text-gray-600 mb-0.5">Deposit</p>
+                    <p className="text-sm font-bold text-yellow-600 truncate">{formatCurrency(offer.kaparoFiyat, offer.paraTipi)}</p>
+                  </div>
+                  <div className="text-center p-2 bg-orange-50 rounded">
+                    <p className="text-xs text-gray-600 mb-0.5">Remaining</p>
+                    <p className="text-sm font-bold text-orange-600 truncate">{formatCurrency(offer.kalanBakiye, offer.paraTipi)}</p>
+                  </div>
+                  <div className="text-center p-2 bg-purple-50 rounded">
+                    <p className="text-xs text-gray-600 mb-0.5">Advance %</p>
+                    <p className="text-sm font-bold text-purple-600">{offer.pesinYüzde}%</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 mb-3">
+                  <div>
+                    <p className="text-xs text-gray-500 mb-0.5">Quantity</p>
+                    <p className="text-sm font-medium text-gray-900">{offer.mAdet} units</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500 mb-0.5">Delivery Count</p>
+                    <p className="text-sm font-medium text-gray-900">{offer.mTeslimat}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500 mb-0.5">Delivery Type</p>
+                    <p className="text-sm font-medium text-gray-900 truncate">{offer.teslimatÇeşiti || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500 mb-0.5">Assembly</p>
+                    <p className="text-sm font-medium text-gray-900 truncate">{offer.montaj || 'N/A'}</p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1.5 mb-3 flex-wrap">
+                  {offer.muhasebe && (
+                    <span className="flex items-center gap-1 px-2 py-0.5 bg-green-100 text-green-700 rounded text-xs">
+                      <CheckCircle className="w-3 h-3" /> Muhasebe
+                    </span>
+                  )}
+                  {offer.fabrika && (
+                    <span className="flex items-center gap-1 px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs">
+                      <CheckCircle className="w-3 h-3" /> Fabrika
+                    </span>
+                  )}
+                  {offer.satinAlma && (
+                    <span className="flex items-center gap-1 px-2 py-0.5 bg-purple-100 text-purple-700 rounded text-xs">
+                      <CheckCircle className="w-3 h-3" /> Satın Alma
+                    </span>
+                  )}
+                  {offer.uretim && (
+                    <span className="flex items-center gap-1 px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded text-xs">
+                      <CheckCircle className="w-3 h-3" /> Üretim
+                    </span>
+                  )}
+                  {offer.lojistik && (
+                    <span className="flex items-center gap-1 px-2 py-0.5 bg-teal-100 text-teal-700 rounded text-xs">
+                      <CheckCircle className="w-3 h-3" /> Lojistik
+                    </span>
+                  )}
+                </div>
+
+                {(offer.siparisNotu || offer.kontrolNot || offer.fabrikaNot || offer.lojistikNot) && (
+                  <div className="space-y-1.5 mb-3">
+                    {offer.siparisNotu && (
+                      <div className="p-2 bg-blue-50 rounded text-xs">
+                        <span className="font-semibold text-blue-900">Order Note: </span>
+                        <span className="text-blue-800">{offer.siparisNotu}</span>
+                      </div>
+                    )}
+                    {offer.kontrolNot && (
+                      <div className="p-2 bg-gray-50 rounded text-xs">
+                        <span className="font-semibold text-gray-900">Control Note: </span>
+                        <span className="text-gray-800">{offer.kontrolNot}</span>
+                      </div>
+                    )}
+                    {offer.fabrikaNot && (
+                      <div className="p-2 bg-yellow-50 rounded text-xs">
+                        <span className="font-semibold text-yellow-900">Factory Note: </span>
+                        <span className="text-yellow-800">{offer.fabrikaNot}</span>
+                      </div>
+                    )}
+                    {offer.lojistikNot && (
+                      <div className="p-2 bg-teal-50 rounded text-xs">
+                        <span className="font-semibold text-teal-900">Logistics Note: </span>
+                        <span className="text-teal-800">{offer.lojistikNot}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div className="flex justify-end gap-2">
+                  <button 
+                    onClick={() => openDetailModal(offer)}
+                    className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium py-1.5 px-4 rounded transition-colors"
+                  >
+                    View Full Details
+                  </button>
+                </div>
               </div>
-            ))}
+            </div>
+          ))}
           </div>
         )}
       </div>

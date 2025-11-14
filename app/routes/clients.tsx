@@ -858,7 +858,7 @@ export default function Clients() {
               placeholder="Kullanıcı ara..."
               value={searchTerm}
               onChange={(e) => handleSearch(e.target.value)}
-              className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+              className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm text-black"
             />
           </div>
         </div>

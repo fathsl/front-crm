@@ -1,5 +1,5 @@
 import { useAtomValue } from "jotai";
-import { ArrowUpRight, Calendar, Mail, MessageSquare, SquareArrowOutUpRight, UsersIcon } from "lucide-react";
+import { ArrowUpRight, Calendar, Mail, MessageSquare, UsersIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
@@ -173,7 +173,7 @@ export default function ProgressPage() {
 
       <div className="w-full px-4 sm:px-6 lg:px-8 py-8">
         {users.length > 0 ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-4 sm:gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 2xl:grid-cols-2 gap-4 sm:gap-6">
             {users.map((user) => {
               const todayClientsCount = getClientsCreatedToday(user.userId);
               const discussionCount = getDiscussionsCreatedTodayByUser(user.userId);
@@ -183,52 +183,76 @@ export default function ProgressPage() {
               return (
                 <div
                   key={user.userId}
-                  className="bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow-md transition-all duration-300"
+                  className="bg-white rounded-lg shadow-sm hover:shadow-md transition-all duration-300 border border-gray-100 overflow-hidden"
                 >
-                  <div className="p-4 sm:p-6 border-b border-gray-200">
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 rounded-full bg-gray-300 flex items-center justify-center flex-shrink-0 text-white font-bold text-lg">
-                        {user.kullaniciAdi.charAt(0)}
+                  <div className="p-3 sm:p-4 border-b border-gray-100">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-gray-700 to-gray-900 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
+                        {user.kullaniciAdi.charAt(0).toUpperCase()}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <h3 className="text-lg font-semibold text-black truncate">
+                        <h3 className="text-sm font-semibold text-gray-900 truncate">
                           {user.kullaniciAdi}
                         </h3>
-                        <p className="text-sm text-gray-600 truncate">{user.email}</p>
+                        <p className="text-xs text-gray-500 truncate">{user.email}</p>
                       </div>
                     </div>
                   </div>
 
-                  <div className="p-4 sm:p-6 space-y-0">
-                    <StatCard
-                      icon={UsersIcon}
-                      label="Clients Today"
-                      value={todayClientsCount}
-                    />
-                    <StatCard
-                      icon={MessageSquare}
-                      label="Discussions"
-                      value={discussionCount}
-                    />
-                    <StatCard
-                      icon={Calendar}
-                      label="Meetings"
-                      value={meetingCount}
-                    />
-                    <StatCard
-                      icon={Mail}
-                      label="Unread Messages"
-                      value={unreadMessageCount}
-                    />
+                  <div className="p-3 sm:p-4">
+                    <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
+                      <div className="flex items-center gap-2 p-2.5 rounded-md bg-gray-50 hover:bg-gray-100 transition-colors">
+                        <div className="w-8 h-8 rounded-md bg-white shadow-sm flex items-center justify-center flex-shrink-0">
+                          <UsersIcon className="w-4 h-4 text-gray-600" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs text-gray-500 font-medium">Clients</p>
+                          <p className="text-base sm:text-lg font-bold text-gray-900">{todayClientsCount}</p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 p-2.5 rounded-md bg-gray-50 hover:bg-gray-100 transition-colors">
+                        <div className="w-8 h-8 rounded-md bg-white shadow-sm flex items-center justify-center flex-shrink-0">
+                          <MessageSquare className="w-4 h-4 text-gray-600" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs text-gray-500 font-medium">Discussions</p>
+                          <p className="text-base sm:text-lg font-bold text-gray-900">{discussionCount}</p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 p-2.5 rounded-md bg-gray-50 hover:bg-gray-100 transition-colors">
+                        <div className="w-8 h-8 rounded-md bg-white shadow-sm flex items-center justify-center flex-shrink-0">
+                          <Calendar className="w-4 h-4 text-gray-600" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs text-gray-500 font-medium">Meetings</p>
+                          <p className="text-base sm:text-lg font-bold text-gray-900">{meetingCount}</p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 p-2.5 rounded-md bg-gray-50 hover:bg-gray-100 transition-colors relative">
+                        <div className="w-8 h-8 rounded-md bg-white shadow-sm flex items-center justify-center flex-shrink-0 relative">
+                          <Mail className="w-4 h-4 text-gray-600" />
+                          {unreadMessageCount > 0 && (
+                            <div className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-red-500 rounded-full border border-white" />
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs text-gray-500 font-medium">Unread</p>
+                          <p className="text-base sm:text-lg font-bold text-gray-900">{unreadMessageCount}</p>
+                        </div>
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="px-4 sm:px-6 py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
-                    <p className="text-xs text-gray-600">Updated today</p>
+                  <div className="px-3 sm:px-4 py-2 bg-gray-50 border-t border-gray-100 flex items-center justify-between text-xs">
+                    <p className="text-gray-500">Updated today</p>
                     <button
                       onClick={() => navigate(`/progress/${user.userId}`)}
-                      className="p-2 rounded-lg bg-gray-200 hover:bg-gray-300 text-black transition-all duration-200 flex-shrink-0"
+                      className="p-1.5 rounded bg-gray-700 hover:bg-gray-900 text-white transition-all duration-200 active:scale-95"
                     >
-                      <ArrowUpRight className="w-5 h-5" />
+                      <ArrowUpRight className="w-3.5 h-3.5" />
                     </button>
                   </div>
                 </div>
