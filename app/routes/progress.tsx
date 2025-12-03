@@ -1,5 +1,11 @@
 import { useAtomValue } from "jotai";
-import { ArrowUpRight, Calendar, Mail, MessageSquare, UsersIcon } from "lucide-react";
+import {
+  ArrowUpRight,
+  Calendar,
+  Mail,
+  MessageSquare,
+  UsersIcon,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
@@ -7,144 +13,159 @@ import type { Client, Discussion, Meeting, User } from "~/help";
 import { userAtom } from "~/utils/userAtom";
 
 export default function ProgressPage() {
-    const { t } = useTranslation();
-    const navigate = useNavigate();
-    const [users, setUsers] = useState<User[]>([]);
-    const [clients, setClients] = useState<Client[]>([]);
-    const [allDiscussions, setAllDiscussions] = useState<Discussion[]>([]);
-    const [meetings, setMeetings] = useState<Meeting[]>([]);
-    const [userUnreadCounts, setUserUnreadCounts] = useState<{ [userId: number]: number }>({});
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState('');
-    const currentUser = useAtomValue(userAtom) as unknown as User;
-    const baseUrl = "https://api-crm-tegd.onrender.com";
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+  const [users, setUsers] = useState<User[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [allDiscussions, setAllDiscussions] = useState<Discussion[]>([]);
+  const [meetings, setMeetings] = useState<Meeting[]>([]);
+  const [userUnreadCounts, setUserUnreadCounts] = useState<{
+    [userId: number]: number;
+  }>({});
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const currentUser = useAtomValue(userAtom) as unknown as User;
+  const baseUrl = "https://api-crm-tegd.onrender.com";
 
-    const fetchUsers = async () => {
-        try {
-          setLoading(true);
-          const response = await fetch(`${baseUrl}/api/User`);
-          if (response.ok) {
-            const data = await response.json();
-            const sortedUsers = data.sort((a: User, b: User) => 
-                a.kullaniciAdi.localeCompare(b.kullaniciAdi)
-              );
-            setUsers(sortedUsers);
-          } else {
-            throw new Error('Failed to fetch users');
-          }
-        } catch (err) {
-          setError('Kullanıcılar yüklenirken hata oluştu');
-          console.error('Error fetching users:', err);
-        } finally {
-          setLoading(false);
-        }
-    };
+  const fetchUsers = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch(`${baseUrl}/api/User`);
+      if (response.ok) {
+        const data = await response.json();
+        const sortedUsers = data.sort((a: User, b: User) =>
+          a.kullaniciAdi.localeCompare(b.kullaniciAdi)
+        );
+        setUsers(sortedUsers);
+      } else {
+        throw new Error("Failed to fetch users");
+      }
+    } catch (err) {
+      setError("Kullanıcılar yüklenirken hata oluştu");
+      console.error("Error fetching users:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    const fetchClients = async () => {
-        try {
-          setLoading(true);
-          const response = await fetch(`${baseUrl}/api/Clients`);
-          if (response.ok) {
-            const data = await response.json();
-            setClients(data);
-          } else {
-            throw new Error('Failed to fetch clients');
-          }
-        } catch (err) {
-          setError('Kullanıcılar yüklenirken hata oluştu');
-          console.error('Error fetching clients:', err);
-        } finally {
-          setLoading(false);
-        }
-    };
+  const fetchClients = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch(`${baseUrl}/api/Clients`);
+      if (response.ok) {
+        const data = await response.json();
+        setClients(data);
+      } else {
+        throw new Error("Failed to fetch clients");
+      }
+    } catch (err) {
+      setError("Kullanıcılar yüklenirken hata oluştu");
+      console.error("Error fetching clients:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    const fetchAllDiscussions = async () => {
-        try {
-          setLoading(true);
-          const response = await fetch(`${baseUrl}/api/Chat/discussions/${currentUser?.userId}`);          
-          if (response.ok) {
-            const data = await response.json();
-            setAllDiscussions(data);
-          } else {
-            throw new Error('Failed to fetch discussions');
-          }
-        } catch (err) {
-          setError('Tartışmalar yüklenirken hata oluştu');
-          console.error('Error fetching discussions:', err);
-        } finally {
-          setLoading(false);
-        }
-    };
+  const fetchAllDiscussions = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch(
+        `${baseUrl}/api/Chat/discussions/${currentUser?.userId}`
+      );
+      if (response.ok) {
+        const data = await response.json();
+        setAllDiscussions(data);
+      } else {
+        throw new Error("Failed to fetch discussions");
+      }
+    } catch (err) {
+      setError("Tartışmalar yüklenirken hata oluştu");
+      console.error("Error fetching discussions:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    const fetchMeetings = async () => {
-        try {
-          setLoading(true);
-          const response = await fetch(`${baseUrl}/api/Meeting`);
-          if (response.ok) {
-            const data = await response.json();
-            setMeetings(data);
-          } else {
-            throw new Error('Failed to fetch clients');
-          }
-        } catch (err) {
-          setError('Kullanıcılar yüklenirken hata oluştu');
-          console.error('Error fetching clients:', err);
-        } finally {
-          setLoading(false);
-        }
-    };
+  const fetchMeetings = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch(`${baseUrl}/api/Meeting`);
+      if (response.ok) {
+        const data = await response.json();
+        setMeetings(data);
+      } else {
+        throw new Error("Failed to fetch clients");
+      }
+    } catch (err) {
+      setError("Kullanıcılar yüklenirken hata oluştu");
+      console.error("Error fetching clients:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    const fetchAllUnreadCounts = async () => {
-        try {
-          const response = await fetch(`${baseUrl}/api/Chat/users/unreadcounts`);
-          if (response.ok) {
-            const counts = await response.json();
-            setUserUnreadCounts(counts);
-          }
-        } catch (error) {
-          console.error('Error fetching unread counts:', error);
-        }
-    };
+  const fetchAllUnreadCounts = async () => {
+    try {
+      const response = await fetch(`${baseUrl}/api/Chat/users/unreadcounts`);
+      if (response.ok) {
+        const counts = await response.json();
+        setUserUnreadCounts(counts);
+      }
+    } catch (error) {
+      console.error("Error fetching unread counts:", error);
+    }
+  };
 
-    useEffect(() => {
-        fetchUsers();
-        fetchClients();
-        fetchAllDiscussions();
-        fetchMeetings();
-        fetchAllUnreadCounts();
-    }, []);
+  useEffect(() => {
+    fetchUsers();
+    fetchClients();
+    fetchAllDiscussions();
+    fetchMeetings();
+    fetchAllUnreadCounts();
+  }, []);
 
-    const isToday = (dateString: Date) => {
-        const date = new Date(dateString);
-        const today = new Date();
-        return date.getDate() === today.getDate() &&
-          date.getMonth() === today.getMonth() &&
-          date.getFullYear() === today.getFullYear();
-    };
+  const isToday = (dateString: Date) => {
+    const date = new Date(dateString);
+    const today = new Date();
+    return (
+      date.getDate() === today.getDate() &&
+      date.getMonth() === today.getMonth() &&
+      date.getFullYear() === today.getFullYear()
+    );
+  };
 
-    const getClientsCreatedToday = (userId: number) => {
-        return clients.filter((client) => 
-          client.createdBy === userId && isToday(client.createdAt)
-        ).length;
-    };
+  const getClientsCreatedToday = (userId: number) => {
+    return clients.filter(
+      (client) => client.createdBy === userId && isToday(client.createdAt)
+    ).length;
+  };
 
-    const getDiscussionsCreatedTodayByUser = (userId: number) => {
-        return allDiscussions.filter((discussion) => 
-          discussion.createdByUserId === userId && isToday(discussion.createdAt)
-        ).length;
-    };
+  const getDiscussionsCreatedTodayByUser = (userId: number) => {
+    return allDiscussions.filter(
+      (discussion) =>
+        discussion.createdByUserId === userId && isToday(discussion.createdAt)
+    ).length;
+  };
 
-    const getMeetingsCreatedTodayByUser = (userId: number) => {
-        return meetings.filter((meeting) => 
-          meeting.createdBy === userId && isToday(meeting.createdAt)
-        ).length;
-    };
+  const getMeetingsCreatedTodayByUser = (userId: number) => {
+    return meetings.filter(
+      (meeting) => meeting.createdBy === userId && isToday(meeting.createdAt)
+    ).length;
+  };
 
-    const getUnreadMessageCount = (userId: number) => {
-        return userUnreadCounts[userId] || 0;
-    };
+  const getUnreadMessageCount = (userId: number) => {
+    return userUnreadCounts[userId] || 0;
+  };
 
-    const StatCard = ({ icon: Icon, label, value }: { icon: any; label: string; value: number }) => (
+  const StatCard = ({
+    icon: Icon,
+    label,
+    value,
+  }: {
+    icon: any;
+    label: string;
+    value: number;
+  }) => (
     <div className="flex items-center justify-between py-3 px-4 border-b border-gray-200 last:border-b-0">
       <div className="flex items-center gap-2">
         <Icon className="w-4 h-4 text-gray-600" />
@@ -154,8 +175,8 @@ export default function ProgressPage() {
     </div>
   );
 
-    return (
-      <div className="min-h-screen w-full bg-white">
+  return (
+    <div className="min-h-screen w-full bg-white">
       <div className="sticky top-0 z-10 bg-white border-b border-gray-200">
         <div className="w-full px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex items-center justify-between">
@@ -176,7 +197,9 @@ export default function ProgressPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 2xl:grid-cols-2 gap-4 sm:gap-6">
             {users.map((user) => {
               const todayClientsCount = getClientsCreatedToday(user.userId);
-              const discussionCount = getDiscussionsCreatedTodayByUser(user.userId);
+              const discussionCount = getDiscussionsCreatedTodayByUser(
+                user.userId
+              );
               const meetingCount = getMeetingsCreatedTodayByUser(user.userId);
               const unreadMessageCount = getUnreadMessageCount(user.userId);
 
@@ -194,7 +217,9 @@ export default function ProgressPage() {
                         <h3 className="text-sm font-semibold text-gray-900 truncate">
                           {user.kullaniciAdi}
                         </h3>
-                        <p className="text-xs text-gray-500 truncate">{user.email}</p>
+                        <p className="text-xs text-gray-500 truncate">
+                          {user.email}
+                        </p>
                       </div>
                     </div>
                   </div>
@@ -206,8 +231,12 @@ export default function ProgressPage() {
                           <UsersIcon className="w-4 h-4 text-gray-600" />
                         </div>
                         <div className="min-w-0">
-                          <p className="text-xs text-gray-500 font-medium">Clients</p>
-                          <p className="text-base sm:text-lg font-bold text-gray-900">{todayClientsCount}</p>
+                          <p className="text-xs text-gray-500 font-medium">
+                            Clients
+                          </p>
+                          <p className="text-base sm:text-lg font-bold text-gray-900">
+                            {todayClientsCount}
+                          </p>
                         </div>
                       </div>
 
@@ -216,8 +245,12 @@ export default function ProgressPage() {
                           <MessageSquare className="w-4 h-4 text-gray-600" />
                         </div>
                         <div className="min-w-0">
-                          <p className="text-xs text-gray-500 font-medium">Discussions</p>
-                          <p className="text-base sm:text-lg font-bold text-gray-900">{discussionCount}</p>
+                          <p className="text-xs text-gray-500 font-medium">
+                            Discussions
+                          </p>
+                          <p className="text-base sm:text-lg font-bold text-gray-900">
+                            {discussionCount}
+                          </p>
                         </div>
                       </div>
 
@@ -226,8 +259,12 @@ export default function ProgressPage() {
                           <Calendar className="w-4 h-4 text-gray-600" />
                         </div>
                         <div className="min-w-0">
-                          <p className="text-xs text-gray-500 font-medium">Meetings</p>
-                          <p className="text-base sm:text-lg font-bold text-gray-900">{meetingCount}</p>
+                          <p className="text-xs text-gray-500 font-medium">
+                            Meetings
+                          </p>
+                          <p className="text-base sm:text-lg font-bold text-gray-900">
+                            {meetingCount}
+                          </p>
                         </div>
                       </div>
 
@@ -239,8 +276,12 @@ export default function ProgressPage() {
                           )}
                         </div>
                         <div className="min-w-0">
-                          <p className="text-xs text-gray-500 font-medium">Unread</p>
-                          <p className="text-base sm:text-lg font-bold text-gray-900">{unreadMessageCount}</p>
+                          <p className="text-xs text-gray-500 font-medium">
+                            Unread
+                          </p>
+                          <p className="text-base sm:text-lg font-bold text-gray-900">
+                            {unreadMessageCount}
+                          </p>
                         </div>
                       </div>
                     </div>
@@ -274,5 +315,5 @@ export default function ProgressPage() {
         )}
       </div>
     </div>
-    );
-  }
+  );
+}

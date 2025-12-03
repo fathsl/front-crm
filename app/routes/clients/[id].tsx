@@ -1,8 +1,36 @@
 import { useAtomValue } from "jotai";
-import { Calendar, Check, CheckCircle, ChevronDown, Circle, Clock, Eye, FileIcon, Folder, Loader2, Mail, MapPin, Pause, Phone, Play, Plus, Save, Search, UploadIcon, UserIcon, X } from "lucide-react";
+import {
+  Calendar,
+  Check,
+  CheckCircle,
+  ChevronDown,
+  Circle,
+  Clock,
+  Eye,
+  FileIcon,
+  Folder,
+  Loader2,
+  Mail,
+  MapPin,
+  Pause,
+  Phone,
+  Play,
+  Plus,
+  Save,
+  Search,
+  UploadIcon,
+  UserIcon,
+  X,
+} from "lucide-react";
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useParams } from "react-router-dom";
-import { ProjectStatus, type Client, type Project, type Resource, type Task } from "~/help";
+import {
+  ProjectStatus,
+  type Client,
+  type Project,
+  type Resource,
+  type Task,
+} from "~/help";
 import type { TaskPriority } from "~/types/task";
 import { userAtom } from "~/utils/userAtom";
 import { toast } from "sonner";
@@ -20,7 +48,9 @@ const ClientDetailsPage = () => {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [selectedProjects, setSelectedProjects] = useState<number[]>([]);
   const [client, setClient] = useState<ExtendedClient | null>(null);
-  const [originalClient, setOriginalClient] = useState<ExtendedClient | null>(null);
+  const [originalClient, setOriginalClient] = useState<ExtendedClient | null>(
+    null
+  );
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const { id } = useParams<{ id: string }>();
   const [isLoading, setIsLoading] = useState({
@@ -29,8 +59,8 @@ const ClientDetailsPage = () => {
     resources: false,
     tasks: false,
   });
-  const [resourceTitle, setResourceTitle] = useState('');
-  const [resourceDescription, setResourceDescription] = useState('');
+  const [resourceTitle, setResourceTitle] = useState("");
+  const [resourceDescription, setResourceDescription] = useState("");
   const [playingAudio, setPlayingAudio] = useState<string | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -43,7 +73,7 @@ const ClientDetailsPage = () => {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const dropdownRef = useRef(null);
   const searchInputRef = useRef(null);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState("");
 
   const baseUrl = "https://api-crm-tegd.onrender.com";
   const currentUser = useAtomValue(userAtom);
@@ -53,92 +83,92 @@ const ClientDetailsPage = () => {
 
   const fetchClients = useCallback(async () => {
     try {
-      setIsLoading(prev => ({ ...prev, clients: true }));
+      setIsLoading((prev) => ({ ...prev, clients: true }));
       const response = await fetch(`${baseUrl}/api/Clients`);
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
       const data: ExtendedClient[] = await response.json();
-      
+
       setClients(data);
-      
+
       if (id) {
-        const currentClient = data.find(c => c.id === Number(id)) || null;
+        const currentClient = data.find((c) => c.id === Number(id)) || null;
         setClient(currentClient);
         setOriginalClient(JSON.parse(JSON.stringify(currentClient)));
-        
+
         const projectIds = currentClient?.projectIds || [];
         setSelectedProjects([...projectIds]);
       }
     } catch (error) {
-      console.error('Error fetching clients:', error);
-      toast.error('Error fetching clients');
+      console.error("Error fetching clients:", error);
+      toast.error("Error fetching clients");
     } finally {
-      setIsLoading(prev => ({ ...prev, clients: false }));
+      setIsLoading((prev) => ({ ...prev, clients: false }));
     }
   }, [id, baseUrl]);
 
   const fetchProjects = useCallback(async () => {
-    setIsLoading(prev => ({ ...prev, projects: true }));
+    setIsLoading((prev) => ({ ...prev, projects: true }));
     try {
       const response = await fetch(`${baseUrl}/api/Project`);
 
       if (!response.ok) {
-        throw new Error('Failed to fetch projects');
+        throw new Error("Failed to fetch projects");
       }
 
       const data: Project[] = await response.json();
       setProjects(data);
     } catch (error) {
-      console.error('Error fetching projects:', error);
-      toast.error('Failed to load projects');
+      console.error("Error fetching projects:", error);
+      toast.error("Failed to load projects");
     } finally {
-      setIsLoading(prev => ({ ...prev, projects: false }));
+      setIsLoading((prev) => ({ ...prev, projects: false }));
     }
   }, [baseUrl]);
 
-  const filteredProjects = projects.filter(project =>
+  const filteredProjects = projects.filter((project) =>
     project.title.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const fetchResources = useCallback(async () => {
     if (!id) return;
 
-    setIsLoading(prev => ({ ...prev, resources: true }));
+    setIsLoading((prev) => ({ ...prev, resources: true }));
     try {
       const response = await fetch(`${baseUrl}/api/clients/${id}/resources`);
 
       if (!response.ok) {
-        throw new Error('Failed to fetch resources');
+        throw new Error("Failed to fetch resources");
       }
       const data: Resource[] = await response.json();
       setResources(data);
     } catch (error) {
-      console.error('Error fetching resources:', error);
-      toast.error('Failed to load resources');
+      console.error("Error fetching resources:", error);
+      toast.error("Failed to load resources");
     } finally {
-      setIsLoading(prev => ({ ...prev, resources: false }));
+      setIsLoading((prev) => ({ ...prev, resources: false }));
     }
   }, [id, baseUrl]);
 
   const fetchTasks = useCallback(async () => {
     if (!id) return;
-    
-    setIsLoading(prev => ({ ...prev, tasks: true }));
+
+    setIsLoading((prev) => ({ ...prev, tasks: true }));
     try {
       const response = await fetch(`${baseUrl}/api/clients/${id}/tasks`);
-      
+
       if (!response.ok) {
-        throw new Error('Failed to fetch tasks');
+        throw new Error("Failed to fetch tasks");
       }
-      
+
       const data: Task[] = await response.json();
       setTasks(data);
     } catch (error) {
-      console.error('Error fetching tasks:', error);
-      toast.error('Failed to load tasks');
+      console.error("Error fetching tasks:", error);
+      toast.error("Failed to load tasks");
     } finally {
-      setIsLoading(prev => ({ ...prev, tasks: false }));
+      setIsLoading((prev) => ({ ...prev, tasks: false }));
     }
   }, [id, baseUrl]);
 
@@ -149,11 +179,12 @@ const ClientDetailsPage = () => {
         setPlayingAudio(null);
       } else {
         audioRef.current.src = url;
-        audioRef.current.play()
+        audioRef.current
+          .play()
           .then(() => setPlayingAudio(id))
-          .catch(error => {
-            console.error('Error playing audio:', error);
-            toast.error('Error playing audio');
+          .catch((error) => {
+            console.error("Error playing audio:", error);
+            toast.error("Error playing audio");
           });
       }
     }
@@ -161,27 +192,35 @@ const ClientDetailsPage = () => {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'Completed': return 'text-green-600 bg-green-100';
-      case 'InProgress': return 'text-blue-600 bg-blue-100';
-      case 'Pending': return 'text-orange-600 bg-orange-100';
-      default: return 'text-gray-600 bg-gray-100';
+      case "Completed":
+        return "text-green-600 bg-green-100";
+      case "InProgress":
+        return "text-blue-600 bg-blue-100";
+      case "Pending":
+        return "text-orange-600 bg-orange-100";
+      default:
+        return "text-gray-600 bg-gray-100";
     }
   };
 
   const getPriorityColor = (priority: number | TaskPriority) => {
     switch (priority) {
-      case 0: return 'text-red-600 bg-red-100';
-      case 1: return 'text-yellow-600 bg-yellow-100';
-      case 2: return 'text-green-600 bg-green-100';
-      default: return 'text-gray-600 bg-gray-100';
+      case 0:
+        return "text-red-600 bg-red-100";
+      case 1:
+        return "text-yellow-600 bg-yellow-100";
+      case 2:
+        return "text-green-600 bg-green-100";
+      default:
+        return "text-gray-600 bg-gray-100";
     }
   };
 
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case 'Completed':
+      case "Completed":
         return <CheckCircle className="h-4 w-4" />;
-      case 'In Progress':
+      case "In Progress":
         return <Loader2 className="h-4 w-4 animate-spin" />;
       default:
         return <Circle className="h-4 w-4" />;
@@ -194,18 +233,20 @@ const ClientDetailsPage = () => {
       setSelectedFile(file);
       setRecordedAudio(null);
       if (!resourceTitle) {
-        setResourceTitle(file.name.split('.').slice(0, -1).join('.'));
+        setResourceTitle(file.name.split(".").slice(0, -1).join("."));
       }
     }
   };
 
   const hasUnsavedChanges = useCallback((): boolean => {
     if (!originalClient) return false;
-    
+
     const originalProjectIds = [...(originalClient.projectIds || [])].sort();
     const currentProjectIds = [...selectedProjects].sort();
-    
-    return JSON.stringify(originalProjectIds) !== JSON.stringify(currentProjectIds);
+
+    return (
+      JSON.stringify(originalProjectIds) !== JSON.stringify(currentProjectIds)
+    );
   }, [originalClient, selectedProjects]);
 
   useEffect(() => {
@@ -234,19 +275,15 @@ const ClientDetailsPage = () => {
     const loadData = async () => {
       try {
         await fetchClients();
-        await Promise.all([
-          fetchProjects(),
-          fetchResources(),
-          fetchTasks()
-        ]);
+        await Promise.all([fetchProjects(), fetchResources(), fetchTasks()]);
       } catch (error) {
-        console.error('Error loading data:', error);
-        toast.error('Failed to load data');
+        console.error("Error loading data:", error);
+        toast.error("Failed to load data");
       }
     };
-    
+
     loadData();
-    
+
     return () => {
       if (audioRef.current) {
         audioRef.current.pause();
@@ -258,37 +295,45 @@ const ClientDetailsPage = () => {
         mediaRecorderRef.current.stop();
       }
     };
-  }, [id, fetchClients, fetchProjects, fetchResources, fetchTasks, isRecording]);
+  }, [
+    id,
+    fetchClients,
+    fetchProjects,
+    fetchResources,
+    fetchTasks,
+    isRecording,
+  ]);
 
   useEffect(() => {
     const originalProjectIds = originalClient?.projectIds || [];
     const currentProjectIds = selectedProjects;
-   
+
     const projectsChanged =
       originalProjectIds.length !== currentProjectIds.length ||
-      !originalProjectIds.every(id => currentProjectIds.includes(id)) ||
-      !currentProjectIds.every(id => originalProjectIds.includes(id));
-   
+      !originalProjectIds.every((id) => currentProjectIds.includes(id)) ||
+      !currentProjectIds.every((id) => originalProjectIds.includes(id));
+
     hasChanges.current = projectsChanged;
-   
-    setClient(prev => prev ? { ...prev } : prev);
-   
+
+    setClient((prev) => (prev ? { ...prev } : prev));
   }, [selectedProjects, originalClient?.projectIds]);
 
-  const selectedProjectsData = projects.filter(p => selectedProjects.includes(p.id));
+  const selectedProjectsData = projects.filter((p) =>
+    selectedProjects.includes(p.id)
+  );
 
-  const handleProjectToggle = (projectId: number) => {    
+  const handleProjectToggle = (projectId: number) => {
     if (selectedProjects.includes(projectId)) {
-      setSelectedProjects(prev => prev.filter(id => id !== projectId));
+      setSelectedProjects((prev) => prev.filter((id) => id !== projectId));
     } else {
-      setSelectedProjects(prev => [...prev, projectId]);
+      setSelectedProjects((prev) => [...prev, projectId]);
     }
   };
 
   const handleUpdateClient = async () => {
     if (!hasUnsavedChanges() || !client || !id) return;
 
-    setIsLoading(prev => ({ ...prev, clients: true }));
+    setIsLoading((prev) => ({ ...prev, clients: true }));
     try {
       const updateData = {
         ...client,
@@ -297,11 +342,11 @@ const ClientDetailsPage = () => {
       };
 
       const response = await fetch(`${baseUrl}/api/clients/${id}`, {
-        method: 'PUT',
+        method: "PUT",
         headers: {
-          'Content-Type': 'application/json'
+          "Content-Type": "application/json",
         },
-        body: JSON.stringify(updateData)
+        body: JSON.stringify(updateData),
       });
 
       if (response.ok) {
@@ -309,21 +354,21 @@ const ClientDetailsPage = () => {
         setOriginalClient(updatedClient);
         setClient(updatedClient);
         hasChanges.current = false;
-        toast.success('Client updated successfully');
+        toast.success("Client updated successfully");
       } else {
         const error = await response.json();
-        toast.error(error.message || 'Error updating client');
+        toast.error(error.message || "Error updating client");
       }
     } catch (error) {
-      console.error('Error updating client:', error);
-      toast.error('Error updating client');
+      console.error("Error updating client:", error);
+      toast.error("Error updating client");
     } finally {
-      setIsLoading(prev => ({ ...prev, clients: false }));
+      setIsLoading((prev) => ({ ...prev, clients: false }));
     }
   };
 
   const removeProject = (projectId: number) => {
-    setSelectedProjects(prev => prev.filter(id => id !== projectId));
+    setSelectedProjects((prev) => prev.filter((id) => id !== projectId));
   };
 
   const clearAll = () => {
@@ -333,71 +378,90 @@ const ClientDetailsPage = () => {
   const getStatusConfig = (status: ProjectStatus) => {
     switch (status) {
       case ProjectStatus.Completed:
-        return { icon: CheckCircle, color: 'text-green-600', bg: 'bg-green-50', badge: 'bg-green-100 text-green-700' };
+        return {
+          icon: CheckCircle,
+          color: "text-green-600",
+          bg: "bg-green-50",
+          badge: "bg-green-100 text-green-700",
+        };
       case ProjectStatus.InProgress:
-        return { icon: Clock, color: 'text-blue-600', bg: 'bg-blue-50', badge: 'bg-blue-100 text-blue-700' };
+        return {
+          icon: Clock,
+          color: "text-blue-600",
+          bg: "bg-blue-50",
+          badge: "bg-blue-100 text-blue-700",
+        };
       default:
-        return { icon: Folder, color: 'text-gray-600', bg: 'bg-gray-50', badge: 'bg-gray-100 text-gray-700' };
+        return {
+          icon: Folder,
+          color: "text-gray-600",
+          bg: "bg-gray-50",
+          badge: "bg-gray-100 text-gray-700",
+        };
     }
   };
 
   const handleAddResource = async () => {
     if (!selectedFile && !recordedAudio) {
-      toast.error('Please select a file or record audio');
+      toast.error("Please select a file or record audio");
       return;
     }
 
     if (!resourceTitle.trim()) {
-      toast.error('Please enter a title for the resource');
+      toast.error("Please enter a title for the resource");
       return;
     }
 
     if (!id) {
-      toast.error('Client ID is missing');
+      toast.error("Client ID is missing");
       return;
     }
 
     setIsUploading(true);
     try {
       const formData = new FormData();
-      formData.append('Title', resourceTitle);
-      formData.append('Description', resourceDescription);
-      formData.append('CreatedBy', currentUserId?.toString() || '');
+      formData.append("Title", resourceTitle);
+      formData.append("Description", resourceDescription);
+      formData.append("CreatedBy", currentUserId?.toString() || "");
 
       if (selectedFile) {
-        formData.append('file', selectedFile);
+        formData.append("file", selectedFile);
       } else if (recordedAudio) {
-        const audioFile = new File([recordedAudio], `recording_${Date.now()}.webm`, {
-          type: 'audio/webm'
-        });
-        formData.append('audioFile', audioFile);
+        const audioFile = new File(
+          [recordedAudio],
+          `recording_${Date.now()}.webm`,
+          {
+            type: "audio/webm",
+          }
+        );
+        formData.append("audioFile", audioFile);
       }
 
       const response = await fetch(`${baseUrl}/api/clients/${id}/resources`, {
-        method: 'POST',
-        body: formData
+        method: "POST",
+        body: formData,
       });
 
       if (response.ok) {
         setSelectedFile(null);
         setRecordedAudio(null);
-        setResourceTitle('');
-        setResourceDescription('');
+        setResourceTitle("");
+        setResourceDescription("");
         setPlayingAudio(null);
         if (fileInputRef.current) {
-          fileInputRef.current.value = '';
+          fileInputRef.current.value = "";
         }
 
         await fetchResources();
-        toast.success('Resource added successfully');
+        toast.success("Resource added successfully");
         setIsDrawerOpen(false);
       } else {
         const error = await response.json();
-        toast.error(error.message || 'Error adding resource');
+        toast.error(error.message || "Error adding resource");
       }
     } catch (error) {
-      console.error('Error adding resource:', error);
-      toast.error('Error adding resource');
+      console.error("Error adding resource:", error);
+      toast.error("Error adding resource");
     } finally {
       setIsUploading(false);
     }
@@ -412,7 +476,9 @@ const ClientDetailsPage = () => {
               <UserIcon className="h-6 w-6 text-white" />
             </div>
             <div>
-              <h1 className="text-xl md:text-2xl font-bold text-gray-900">{client?.first_name + " " + client?.last_name}</h1>
+              <h1 className="text-xl md:text-2xl font-bold text-gray-900">
+                {client?.first_name + " " + client?.last_name}
+              </h1>
               <p className="text-sm text-gray-500">Client ID: #{client?.id}</p>
             </div>
           </div>
@@ -421,8 +487,8 @@ const ClientDetailsPage = () => {
             disabled={!hasChanges.current}
             className={`px-4 py-2 rounded-lg font-medium transition-all ${
               hasChanges.current
-                ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-md'
-                : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                ? "bg-blue-600 text-white hover:bg-blue-700 shadow-md"
+                : "bg-gray-200 text-gray-400 cursor-not-allowed"
             }`}
           >
             <div className="flex items-center space-x-2">
@@ -435,7 +501,9 @@ const ClientDetailsPage = () => {
 
       <div className="p-4 md:p-6 space-y-6">
         <div className="bg-white rounded-xl shadow-sm p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Client Information</h2>
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">
+            Client Information
+          </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
               <Mail className="h-5 w-5 text-gray-400" />
@@ -455,7 +523,11 @@ const ClientDetailsPage = () => {
               <Calendar className="h-5 w-5 text-gray-400" />
               <div>
                 <p className="text-sm text-gray-500">Client Since</p>
-                <p className="font-medium text-black">{client?.createdAt ? new Date(client?.createdAt).toDateString() : ""}</p>
+                <p className="font-medium text-black">
+                  {client?.createdAt
+                    ? new Date(client?.createdAt).toDateString()
+                    : ""}
+                </p>
               </div>
             </div>
           </div>
@@ -498,16 +570,21 @@ const ClientDetailsPage = () => {
             </div>
           ) : (
             <div className="space-y-3">
-              {resources.map(resource => (
+              {resources.map((resource) => (
                 <div key={resource.id} className="p-4 bg-gray-50 rounded-lg">
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
-                      <h3 className="font-medium text-gray-900">{resource.title}</h3>
+                      <h3 className="font-medium text-gray-900">
+                        {resource.title}
+                      </h3>
                       {resource.description && (
-                        <p className="text-sm text-gray-600 mt-1">{resource.description}</p>
+                        <p className="text-sm text-gray-600 mt-1">
+                          {resource.description}
+                        </p>
                       )}
                       <p className="text-xs text-gray-500 mt-2">
-                        Added {new Date(resource.createdAt).toLocaleDateString()}
+                        Added{" "}
+                        {new Date(resource.createdAt).toLocaleDateString()}
                       </p>
                     </div>
                     <div className="flex items-center space-x-2 ml-4">
@@ -522,7 +599,7 @@ const ClientDetailsPage = () => {
                           <Eye className="h-4 w-4" />
                         </a>
                       )}
-                     {/*  {resource.voiceUrl && (
+                      {/*  {resource.voiceUrl && (
                         <button
                           onClick={() => playAudio(resource.voiceUrl, resource.id)}
                           className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
@@ -543,8 +620,10 @@ const ClientDetailsPage = () => {
         </div>
 
         <div className="bg-white rounded-xl shadow-sm p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Related Tasks</h2>
-          
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">
+            Related Tasks
+          </h2>
+
           {tasks.length === 0 ? (
             <div className="text-center py-8">
               <CheckCircle className="h-12 w-12 text-gray-400 mx-auto mb-3" />
@@ -552,27 +631,40 @@ const ClientDetailsPage = () => {
             </div>
           ) : (
             <div className="space-y-4">
-              {tasks.map(task => (
-                <div key={task.id} className="p-4 border border-gray-200 rounded-lg hover:shadow-md transition-shadow">
+              {tasks.map((task) => (
+                <div
+                  key={task.id}
+                  className="p-4 border border-gray-200 rounded-lg hover:shadow-md transition-shadow"
+                >
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex items-center space-x-2">
-                      <div className={`${getStatusColor(task.status)} p-1 rounded-full`}>
+                      <div
+                        className={`${getStatusColor(task.status)} p-1 rounded-full`}
+                      >
                         {getStatusIcon(task.status)}
                       </div>
-                      <h3 className="font-medium text-gray-900">{task.title}</h3>
+                      <h3 className="font-medium text-gray-900">
+                        {task.title}
+                      </h3>
                     </div>
                     <div className="flex items-center space-x-2">
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(task.status)}`}>
+                      <span
+                        className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(task.status)}`}
+                      >
                         {task.status}
                       </span>
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${getPriorityColor(task.priority)}`}>
+                      <span
+                        className={`px-2 py-1 rounded-full text-xs font-medium ${getPriorityColor(task.priority)}`}
+                      >
                         {task.priority}
                       </span>
                     </div>
                   </div>
-                  
+
                   {task.description && (
-                    <p className="text-sm text-gray-600 mb-3">{task.description}</p>
+                    <p className="text-sm text-gray-600 mb-3">
+                      {task.description}
+                    </p>
                   )}
 
                   <div className="flex items-center justify-between text-sm text-gray-500">
@@ -581,7 +673,9 @@ const ClientDetailsPage = () => {
                       {task.dueDate && (
                         <div className="flex items-center space-x-1">
                           <Clock className="h-3 w-3" />
-                          <span>Due {new Date(task.dueDate).toLocaleDateString()}</span>
+                          <span>
+                            Due {new Date(task.dueDate).toLocaleDateString()}
+                          </span>
                         </div>
                       )}
                     </div>
@@ -599,13 +693,16 @@ const ClientDetailsPage = () => {
                       )}
                       {task.voiceUrl && (
                         <button
-                          onClick={() => playAudio(task.voiceUrl || '', `task-${task.id}`)}
+                          onClick={() =>
+                            playAudio(task.voiceUrl || "", `task-${task.id}`)
+                          }
                           className="flex items-center space-x-1 text-green-600 hover:text-green-700"
                         >
-                          {playingAudio === `task-${task.id}` ? 
-                            <Pause className="h-3 w-3" /> : 
+                          {playingAudio === `task-${task.id}` ? (
+                            <Pause className="h-3 w-3" />
+                          ) : (
                             <Play className="h-3 w-3" />
-                          }
+                          )}
                           <span>Voice Note</span>
                         </button>
                       )}
@@ -620,14 +717,21 @@ const ClientDetailsPage = () => {
 
       {isDrawerOpen && (
         <div className="fixed inset-0 z-50 overflow-hidden">
-          <div className="absolute inset-0 bg-black/50 bg-opacity-50" onClick={() => setIsDrawerOpen(false)} />
-          <div className={`fixed top-0 right-0 h-full w-full max-w-md bg-white shadow-xl transform transition-transform duration-300 ${
-            isDrawerOpen ? 'translate-x-0' : 'translate-x-full'
-          }`}>
+          <div
+            className="absolute inset-0 bg-black/50 bg-opacity-50"
+            onClick={() => setIsDrawerOpen(false)}
+          />
+          <div
+            className={`fixed top-0 right-0 h-full w-full max-w-md bg-white shadow-xl transform transition-transform duration-300 ${
+              isDrawerOpen ? "translate-x-0" : "translate-x-full"
+            }`}
+          >
             <div className="h-full flex flex-col">
               <div className="px-6 py-4 border-b border-gray-200">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-semibold text-gray-900">Add Resource</h3>
+                  <h3 className="text-lg font-semibold text-gray-900">
+                    Add Resource
+                  </h3>
                   <button
                     onClick={() => setIsDrawerOpen(false)}
                     className="p-2 text-gray-400 hover:text-gray-600 rounded-lg"
@@ -639,7 +743,9 @@ const ClientDetailsPage = () => {
 
               <div className="flex-1 overflow-y-auto p-6 space-y-6">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Title</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Title
+                  </label>
                   <input
                     type="text"
                     value={resourceTitle}
@@ -650,7 +756,9 @@ const ClientDetailsPage = () => {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Description
+                  </label>
                   <textarea
                     value={resourceDescription}
                     onChange={(e) => setResourceDescription(e.target.value)}
@@ -662,7 +770,9 @@ const ClientDetailsPage = () => {
 
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Upload File</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Upload File
+                    </label>
                     <input
                       type="file"
                       ref={fileInputRef}
@@ -676,7 +786,9 @@ const ClientDetailsPage = () => {
                       <div className="flex flex-col items-center space-y-2">
                         <UploadIcon className="h-8 w-8 text-gray-400" />
                         <span className="text-sm text-gray-600">
-                          {selectedFile ? selectedFile.name : 'Click to upload file'}
+                          {selectedFile
+                            ? selectedFile.name
+                            : "Click to upload file"}
                         </span>
                       </div>
                     </button>
@@ -748,10 +860,10 @@ const ClientDetailsPage = () => {
       <audio
         ref={audioRef}
         onEnded={() => setPlayingAudio(null)}
-        style={{ display: 'none' }}
+        style={{ display: "none" }}
       />
     </div>
-    );
+  );
 };
 
 export default ClientDetailsPage;

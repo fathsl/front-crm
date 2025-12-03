@@ -324,6 +324,20 @@ export interface Client {
   requestedDate?: string;
   progress?: string;
   categoryIds?: number[];
+  type: 'client';
+}
+
+export interface Customer {
+    musteriID : number;
+    musteriAd: string;
+    telefon: string;
+    phone: string;
+    zipKod: string;
+    eMail: string;
+    adres: string;
+    vatNumarasi: string;
+    ulkelerID : string;
+    type: 'customer';
 }
 
 export enum DiscussionStatus {

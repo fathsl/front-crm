@@ -1,10 +1,10 @@
-import { LucideIcon } from 'lucide-react';
+import type { LucideIcon } from "lucide-react";
 
 export interface StatCard {
   title: string;
   value: string;
   change: string;
-  changeType: 'positive' | 'negative' | 'neutral';
+  changeType: "positive" | "negative" | "neutral";
   icon: LucideIcon;
   bgColor: string;
   iconColor: string;

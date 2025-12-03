@@ -28,11 +28,11 @@ const DiscussionDetailPage: React.FC = () => {
         const data: Discussion = await response.json();
         setDiscussion(data);
       } else {
-        throw new Error('Failed to fetch discussion');
+        throw new Error("Failed to fetch discussion");
       }
     } catch (err) {
-      console.error('Error fetching discussion:', err);
-      setError('Failed to load discussion');
+      console.error("Error fetching discussion:", err);
+      setError("Failed to load discussion");
     }
   }, [discussionId, currentUser, baseUrl]);
 
@@ -46,16 +46,18 @@ const DiscussionDetailPage: React.FC = () => {
 
       if (response.ok) {
         const data = await response.json();
-        const sorted = data.messages.sort((a: Message, b: Message) =>
-          new Date(a.createdAt ?? 0).getTime() - new Date(b.createdAt ?? 0).getTime()
+        const sorted = data.messages.sort(
+          (a: Message, b: Message) =>
+            new Date(a.createdAt ?? 0).getTime() -
+            new Date(b.createdAt ?? 0).getTime()
         );
         setMessages(sorted);
       } else {
-        throw new Error('Failed to fetch messages');
+        throw new Error("Failed to fetch messages");
       }
     } catch (err) {
-      console.error('Error fetching messages:', err);
-      setError('Failed to load messages');
+      console.error("Error fetching messages:", err);
+      setError("Failed to load messages");
     } finally {
       setLoading(false);
     }
@@ -80,7 +82,9 @@ const DiscussionDetailPage: React.FC = () => {
   if (error || !discussion) {
     return (
       <div className="flex items-center justify-center h-screen">
-        <div className="text-lg text-red-500">{error || 'Discussion not found'}</div>
+        <div className="text-lg text-red-500">
+          {error || "Discussion not found"}
+        </div>
       </div>
     );
   }
@@ -88,14 +92,18 @@ const DiscussionDetailPage: React.FC = () => {
   return (
     <div className="flex flex-col h-screen bg-gray-50">
       <div className="bg-white border-b px-6 py-4 shadow-sm">
-        <h1 className="text-2xl font-semibold text-gray-800">{discussion.title}</h1>
+        <h1 className="text-2xl font-semibold text-gray-800">
+          {discussion.title}
+        </h1>
         {discussion.description && (
           <p className="text-sm text-gray-600 mt-1">{discussion.description}</p>
         )}
         <div className="flex items-center gap-4 mt-2 text-sm text-gray-500">
           <span>Created by: {discussion.createdByUserId}</span>
           <span>•</span>
-          <span>Between: {discussion.senderId} & {discussion.receiverId}</span>
+          <span>
+            Between: {discussion.senderId} & {discussion.receiverId}
+          </span>
         </div>
       </div>
 
@@ -108,26 +116,30 @@ const DiscussionDetailPage: React.FC = () => {
           <div className="space-y-4">
             {messages.map((message) => {
               const isCurrentUser = message.senderId === currentUser?.userId;
-              
+
               return (
                 <div
                   key={message.id}
-                  className={`flex ${isCurrentUser ? 'justify-end' : 'justify-start'}`}
+                  className={`flex ${isCurrentUser ? "justify-end" : "justify-start"}`}
                 >
                   <div
                     className={`max-w-md px-4 py-2 rounded-lg ${
                       isCurrentUser
-                        ? 'bg-blue-500 text-white'
-                        : 'bg-white text-gray-800 border'
+                        ? "bg-blue-500 text-white"
+                        : "bg-white text-gray-800 border"
                     }`}
                   >
                     <p className="text-sm">{message.content}</p>
                     <div className="flex items-center gap-2 mt-1">
-                      <span className={`text-xs ${isCurrentUser ? 'text-blue-100' : 'text-gray-500'}`}>
+                      <span
+                        className={`text-xs ${isCurrentUser ? "text-blue-100" : "text-gray-500"}`}
+                      >
                         {new Date(message.createdAt ?? 0).toLocaleTimeString()}
                       </span>
                       {message.isEdited && (
-                        <span className={`text-xs ${isCurrentUser ? 'text-blue-100' : 'text-gray-500'}`}>
+                        <span
+                          className={`text-xs ${isCurrentUser ? "text-blue-100" : "text-gray-500"}`}
+                        >
                           (edited)
                         </span>
                       )}
